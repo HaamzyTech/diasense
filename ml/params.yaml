@@ -22,3 +22,83 @@ files:
   dataset: diabetes.csv
   schema: raw_schema.json
   metrics: raw_metrics.json
+
+  validated_dataset: validated.csv
+  validation_report: validation_report.json
+
+schema:
+  target_columns: Outcome
+
+  expected_cols:
+    - Pregnancies
+    - Glucose
+    - BloodPressure
+    - SkinThickness
+    - Insulin
+    - BMI
+    - DiabetesPedigreeFunction
+    - Age
+    - Outcome
+  
+  rename_map:
+    Pregnancies: pregnancies
+    Glucose: glucose
+    BloodPressure: blood_pressure
+    SkinThickness: skin_thickness
+    Insulin: insulin
+    BMI: bmi
+    DiabetesPedigreeFunction: diabetes_pedigree_function
+    Age: age
+    Outcome: outcome
+
+  feature_cols:
+    - pregnancies
+    - glucose
+    - blood_pressure
+    - skin_thickness
+    - insulin
+    - bmi
+    - diabetes_pedigree_function
+    - age
+
+  lable_col: outcome
+
+  derived_features:
+    bmi_group: true
+    age_band: true
+
+  zero_as_missing_columns:
+    - glucose
+    - blood_pressure
+    - skin_thickness
+    - insulin
+    - bmi
+
+  valid_ranges:
+    pregnancies:
+      min: 0
+      max: 20
+    glucose:
+      min: 40
+      max: 250
+    blood_pressure:
+      min: 24
+      max: 140
+    skin_thickness:
+      min: 7
+      max: 99
+    insulin:
+      min: 14
+      max: 900
+    bmi:
+      min: 10
+      max: 70
+    diabetes_pedigree_function:
+      min: 0.05
+      max: 3
+    age:
+      min: 18
+      max: 100
+    outcome:
+      min: 0
+      max: 1
