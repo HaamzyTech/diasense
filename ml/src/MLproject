@@ -1,0 +1,17 @@
+name: diasense
+
+python_env: python_env.yaml
+
+entry_points:
+  ingest:
+    command: "python src/ingest.py"
+  validate:
+    command: "python src/validate.py"
+  preprocess:
+    command: "python src/preprocess.py"
+  train:
+    command: "python src/train.py"
+  evaluate:
+    command: "python src/evaluate.py"
+  register:
+    command: "python src/register.py"

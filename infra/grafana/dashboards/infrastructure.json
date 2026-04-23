@@ -1,0 +1,21 @@
+{
+  "title": "infrastructure",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Backend Up",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "up{job=\"backend-api\"}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prometheus Up",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "up{job=\"prometheus\"}"}]
+    }
+  ]
+}

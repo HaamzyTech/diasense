@@ -1,0 +1,27 @@
+{
+  "title": "ml_pipeline",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Pipeline Runs",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(pipeline_runs_total[15m]))"}]
+    },
+    {
+      "type": "stat",
+      "title": "Drift Detected",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "max(drift_detected_gauge)"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prediction Errors",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "targets": [{"expr": "sum(rate(prediction_errors_total[5m]))"}]
+    }
+  ]
+}

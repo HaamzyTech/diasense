@@ -1,0 +1,33 @@
+{
+  "title": "backend_api",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Requests",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(rate(http_requests_total[5m]))"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Duration (p95)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prediction Requests",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [{"expr": "sum(rate(prediction_requests_total[5m]))"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inference Latency (ms)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "avg(model_inference_latency_ms)"}]
+    }
+  ]
+}
