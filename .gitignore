@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+
+# Node
+node_modules/
+.next/
+
+# Environment
+.env
+*.env.local
+
+# Build/dist
+build/
+dist/
+
+# Coverage and testing
+.coverage
+.pytest_cache/
+coverage/
+
+# Logs
+*.log
+airflow/logs/*
+!airflow/logs/.gitkeep
+
+# Data/artifacts
+ml/data/raw/*
+!ml/data/raw/.gitkeep
+ml/data/validated/*
+!ml/data/validated/.gitkeep
+ml/data/processed/*
+!ml/data/processed/.gitkeep
+ml/data/features/*
+!ml/data/features/.gitkeep
+ml/artifacts/baselines/*
+!ml/artifacts/baselines/.gitkeep
+ml/artifacts/reports/*
+!ml/artifacts/reports/.gitkeep
+ml/artifacts/models/*
+!ml/artifacts/models/.gitkeep
+
+# DVC
+.dvc/cache/
+
+# IDE
+.vscode/
+.idea/
