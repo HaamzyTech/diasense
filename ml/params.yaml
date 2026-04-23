@@ -22,9 +22,16 @@ files:
   dataset: diabetes.csv
   schema: raw_schema.json
   metrics: raw_metrics.json
-
+  # validation
   validated_dataset: validated.csv
   validation_report: validation_report.json
+  # preprocessing
+  raw_snapshot: raw_snapshot.csv
+  processed_dataset: processed.csv
+  train_set: train.csv
+  test_set: test.csv
+  val_set: val.csv
+  preprocessing_artifact: preprocessing_artifact.json
 
 schema:
   target_columns: Outcome
@@ -102,3 +109,18 @@ schema:
     outcome:
       min: 0
       max: 1
+
+preprocess:
+  outlier:
+    enabled: true
+    method: iqr
+    multiplier: 1.5
+    columns:
+      - pregnancies
+      - glucose
+      - blood_pressure
+      - skin_thickness
+      - insulin
+      - bmi
+      - diabetes_pedigree_function
+      - age
