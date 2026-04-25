@@ -4,13 +4,15 @@ global:
 
 scrape_configs:
   - job_name: prometheus
+    metrics_path: /metrics
     static_configs:
       - targets: ["prometheus:9090"]
 
-  - job_name: backend-api
+  - job_name: backend_api
     metrics_path: /metrics
     static_configs:
       - targets: ["backend-api:8000"]
 
-  # Airflow does not expose Prometheus metrics by default in this stack.
-  # Add airflow-exporter or statsd-exporter before enabling an airflow scrape job.
+  # Airflow's /metrics endpoint is not Prometheus-formatted in this stack.
+  # It currently serves the web UI HTML, so it is not a valid scrape target.
+  # Add a Prometheus-compatible exporter before enabling an airflow scrape job.

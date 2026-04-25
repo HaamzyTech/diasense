@@ -1,33 +1,143 @@
 {
+  "uid": "diasense-backend-api",
   "title": "backend_api",
+  "tags": ["diasense", "backend"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "editable": true,
   "refresh": "15s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
     {
       "type": "timeseries",
-      "title": "HTTP Requests",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "targets": [{"expr": "sum(rate(http_requests_total[5m]))"}]
+      "title": "HTTP Request Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (status_code) (rate(http_requests_total{job=\"backend_api\"}[5m]))",
+          "legendFormat": "{{status_code}}"
+        }
+      ]
     },
     {
       "type": "timeseries",
-      "title": "Request Duration (p95)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"}]
+      "title": "Request Duration p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend_api\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
     },
     {
       "type": "timeseries",
-      "title": "Prediction Requests",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-      "targets": [{"expr": "sum(rate(prediction_requests_total[5m]))"}]
+      "title": "Prediction Throughput",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (risk_band) (rate(prediction_requests_total{job=\"backend_api\"}[5m]))",
+          "legendFormat": "{{risk_band}}"
+        }
+      ]
     },
     {
       "type": "timeseries",
-      "title": "Inference Latency (ms)",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-      "targets": [{"expr": "avg(model_inference_latency_ms)"}]
+      "title": "Prediction Errors",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(prediction_errors_total{job=\"backend_api\"}[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Model Inference Latency",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "last_over_time(model_inference_latency_ms{job=\"backend_api\"}[15m])",
+          "legendFormat": "latency_ms"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend Exceptions",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum by (exception_type) (rate(backend_api_exceptions_total{job=\"backend_api\"}[5m]))",
+          "legendFormat": "{{exception_type}}"
+        }
+      ]
     }
   ]
 }

@@ -1,27 +1,130 @@
 {
+  "uid": "diasense-ml-pipeline",
   "title": "ml_pipeline",
+  "tags": ["diasense", "mlops"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
+  "editable": true,
   "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
   "panels": [
     {
+      "type": "stat",
+      "title": "Total Pipeline Runs",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "pipeline_runs_total{job=\"backend_api\"}",
+          "legendFormat": "runs"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
+    },
+    {
       "type": "timeseries",
-      "title": "Pipeline Runs",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "targets": [{"expr": "sum(rate(pipeline_runs_total[15m]))"}]
+      "title": "Pipeline Run Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "rate(pipeline_runs_total{job=\"backend_api\"}[15m])",
+          "legendFormat": "runs_per_second"
+        }
+      ]
     },
     {
       "type": "stat",
       "title": "Drift Detected",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "targets": [{"expr": "max(drift_detected_gauge)"}]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "last_over_time(drift_detected_gauge{job=\"backend_api\"}[30m])",
+          "legendFormat": "drift"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
     },
     {
       "type": "timeseries",
       "title": "Prediction Errors",
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
-      "targets": [{"expr": "sum(rate(prediction_errors_total[5m]))"}]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(prediction_errors_total{job=\"backend_api\"}[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prediction Volume",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (risk_band) (rate(prediction_requests_total{job=\"backend_api\"}[5m]))",
+          "legendFormat": "{{risk_band}}"
+        }
+      ]
     }
   ]
 }
