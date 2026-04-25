@@ -4,7 +4,7 @@
   "tags": ["diasense", "mlops"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "refresh": "30s",
   "time": {
@@ -12,6 +12,33 @@
     "to": "now"
   },
   "panels": [
+    {
+      "type": "stat",
+      "title": "Drift Alert State",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(ALERTS{alertname=\"DiasenseDataDriftDetected\",alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "firing"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
+    },
     {
       "type": "stat",
       "title": "Total Pipeline Runs",
@@ -22,7 +49,7 @@
       "gridPos": {
         "h": 8,
         "w": 8,
-        "x": 0,
+        "x": 8,
         "y": 0
       },
       "targets": [
@@ -49,7 +76,7 @@
       "gridPos": {
         "h": 8,
         "w": 8,
-        "x": 8,
+        "x": 16,
         "y": 0
       },
       "targets": [
@@ -60,31 +87,24 @@
       ]
     },
     {
-      "type": "stat",
-      "title": "Drift Detected",
+      "type": "timeseries",
+      "title": "Drift Detected Gauge",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 0
+        "w": 12,
+        "x": 0,
+        "y": 8
       },
       "targets": [
         {
           "expr": "last_over_time(drift_detected_gauge{job=\"backend_api\"}[30m])",
           "legendFormat": "drift"
         }
-      ],
-      "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        }
-      }
+      ]
     },
     {
       "type": "timeseries",
@@ -96,7 +116,7 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
+        "x": 12,
         "y": 8
       },
       "targets": [
@@ -117,7 +137,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 16
       },
       "targets": [
         {

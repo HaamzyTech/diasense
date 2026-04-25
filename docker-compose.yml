@@ -232,13 +232,45 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     depends_on:
       backend-api:
         condition: service_healthy
+      alertmanager:
+        condition: service_started
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    environment:
+      ALERTMANAGER_SMTP_SMARTHOST: ${ALERTMANAGER_SMTP_SMARTHOST:-send.smtp.dev:587}
+      ALERTMANAGER_SMTP_FROM: ${ALERTMANAGER_SMTP_FROM:-developer@zwimba.com}
+      ALERTMANAGER_SMTP_USERNAME: ${ALERTMANAGER_SMTP_USERNAME:-developer@zwimba.com}
+      ALERTMANAGER_SMTP_PASSWORD: ${ALERTMANAGER_SMTP_PASSWORD:-}
+      ALERTMANAGER_EMAIL_TO: ${ALERTMANAGER_EMAIL_TO:-developer@zwimba.com}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        cp /etc/alertmanager/alertmanager.yml /tmp/alertmanager.yml
+        sed -i \
+          -e "s|__ALERTMANAGER_SMTP_SMARTHOST__|${ALERTMANAGER_SMTP_SMARTHOST}|g" \
+          -e "s|__ALERTMANAGER_SMTP_FROM__|${ALERTMANAGER_SMTP_FROM}|g" \
+          -e "s|__ALERTMANAGER_SMTP_USERNAME__|${ALERTMANAGER_SMTP_USERNAME}|g" \
+          -e "s|__ALERTMANAGER_EMAIL_TO__|${ALERTMANAGER_EMAIL_TO}|g" \
+          /tmp/alertmanager.yml
+        printf %s "${ALERTMANAGER_SMTP_PASSWORD}" > /tmp/smtp_password
+        chmod 600 /tmp/smtp_password
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
 
   grafana:
     image: grafana/grafana-oss:latest
@@ -253,6 +285,8 @@ services:
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       prometheus:
+        condition: service_started
+      alertmanager:
         condition: service_started
 
 volumes:

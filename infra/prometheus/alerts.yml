@@ -1,0 +1,53 @@
+groups:
+  - name: diasense-automated-alerting
+    rules:
+      - alert: DiasenseBackendHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="backend_api",status_code!~"2..|3.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{job="backend_api"}[5m])), 0.001)
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+          service: backend-api
+          category: availability
+        annotations:
+          summary: "DiaSense backend error rate is above 5%"
+          description: "The backend-api non-success response ratio has exceeded 5% for at least 1 minute."
+
+      - alert: DiasensePredictionErrorRateHigh
+        expr: |
+          (
+            sum(rate(prediction_errors_total{job="backend_api"}[5m]))
+            /
+            clamp_min(
+              sum(rate(prediction_errors_total{job="backend_api"}[5m]))
+              +
+              (
+                sum(rate(prediction_requests_total{job="backend_api"}[5m]))
+                or on() vector(0)
+              ),
+              0.001
+            )
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+          service: backend-api
+          category: inference
+        annotations:
+          summary: "DiaSense prediction error rate is above 5%"
+          description: "Prediction failures have exceeded 5% of total prediction attempts for at least 1 minute."
+
+      - alert: DiasenseDataDriftDetected
+        expr: max(drift_detected_gauge{job="backend_api"}) > 0
+        for: 30s
+        labels:
+          severity: warning
+          service: ml-pipeline
+          category: drift
+        annotations:
+          summary: "DiaSense data drift detected"
+          description: "The latest monitoring report indicates feature drift and requires investigation."

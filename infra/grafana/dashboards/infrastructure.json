@@ -4,7 +4,7 @@
   "tags": ["diasense", "infra"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "refresh": "30s",
   "time": {
@@ -12,6 +12,33 @@
     "to": "now"
   },
   "panels": [
+    {
+      "type": "stat",
+      "title": "Firing Alerts",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(ALERTS{alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "firing"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
+    },
     {
       "type": "timeseries",
       "title": "Scrape Target Availability",
@@ -21,13 +48,13 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
+        "w": 8,
+        "x": 8,
         "y": 0
       },
       "targets": [
         {
-          "expr": "avg by (job) (up{job=~\"backend_api|prometheus\"})",
+          "expr": "avg by (job) (up{job=~\"backend_api|prometheus|alertmanager\"})",
           "legendFormat": "{{job}}"
         }
       ]
@@ -41,13 +68,13 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 16,
         "y": 0
       },
       "targets": [
         {
-          "expr": "max by (job) (scrape_duration_seconds{job=~\"backend_api|prometheus\"})",
+          "expr": "max by (job) (scrape_duration_seconds{job=~\"backend_api|prometheus|alertmanager\"})",
           "legendFormat": "{{job}}"
         }
       ]
@@ -80,8 +107,8 @@
       }
     },
     {
-      "type": "timeseries",
-      "title": "Backend Traffic",
+      "type": "stat",
+      "title": "Alertmanager Up",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -91,6 +118,33 @@
         "w": 12,
         "x": 12,
         "y": 8
+      },
+      "targets": [
+        {
+          "expr": "max(up{job=\"alertmanager\"}) or vector(0)",
+          "legendFormat": "alertmanager"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend Traffic",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
       },
       "targets": [
         {

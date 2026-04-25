@@ -4,7 +4,7 @@
   "tags": ["diasense", "backend"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "refresh": "15s",
   "time": {
@@ -12,6 +12,53 @@
     "to": "now"
   },
   "panels": [
+    {
+      "type": "stat",
+      "title": "Backend Alert State",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(ALERTS{alertname=\"DiasenseBackendHighErrorRate\",alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "firing"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Error Ratio",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "100 * (sum(rate(http_requests_total{job=\"backend_api\",status_code!~\"2..|3..\"}[5m])) / clamp_min(sum(rate(http_requests_total{job=\"backend_api\"}[5m])), 0.001))",
+          "legendFormat": "error_rate_percent"
+        }
+      ]
+    },
     {
       "type": "timeseries",
       "title": "HTTP Request Rate",
@@ -23,7 +70,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 6
       },
       "targets": [
         {
@@ -43,7 +90,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 6
       },
       "targets": [
         {
@@ -63,7 +110,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 14
       },
       "targets": [
         {
@@ -83,7 +130,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 14
       },
       "targets": [
         {
@@ -103,7 +150,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 22
       },
       "targets": [
         {
@@ -130,7 +177,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 22
       },
       "targets": [
         {

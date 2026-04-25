@@ -1,0 +1,44 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "__ALERTMANAGER_SMTP_SMARTHOST__"
+  smtp_from: "__ALERTMANAGER_SMTP_FROM__"
+  smtp_auth_username: "__ALERTMANAGER_SMTP_USERNAME__"
+  smtp_auth_password_file: "/tmp/smtp_password"
+  smtp_require_tls: false
+
+route:
+  receiver: diasense-email
+  group_by: ["alertname", "service", "severity"]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: diasense-email
+    email_configs:
+      - to: "__ALERTMANAGER_EMAIL_TO__"
+        send_resolved: true
+        headers:
+          subject: '[DiaSense][{{ .Status | toUpper }}][{{ .CommonLabels.severity | toUpper }}] {{ .CommonAnnotations.summary }}'
+        text: |-
+          DiaSense alert notification
+
+          Status: {{ .Status }}
+          Alert: {{ .CommonLabels.alertname }}
+          Severity: {{ .CommonLabels.severity }}
+          Service: {{ .CommonLabels.service }}
+
+          Summary:
+          {{ .CommonAnnotations.summary }}
+
+          Description:
+          {{ .CommonAnnotations.description }}
+
+          Active alerts:
+          {{ range .Alerts -}}
+          - {{ .Labels.alertname }} | {{ .Labels.service }} | {{ .Labels.severity }}
+            Started: {{ .StartsAt }}
+            Generator: {{ .GeneratorURL }}
+          {{ end }}
+
+templates: []
