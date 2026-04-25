@@ -1,4 +1,35 @@
 services:
+  backend-api:
+    build:
+      context: ./apps/backend-api
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-diasense}
+      POSTGRES_USER: ${POSTGRES_USER:-diasense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diasense}
+      MODEL_SERVER_URL: ${MODEL_SERVER_URL:-http://model-server:5001}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-tracking:5000}
+      BACKEND_ADMIN_USERNAME: ${BACKEND_ADMIN_USERNAME:-admin}
+      BACKEND_ADMIN_PASSWORD: ${BACKEND_ADMIN_PASSWORD:-admin}
+      BACKEND_ADMIN_ROLE: ${BACKEND_ADMIN_ROLE:-admin}
+      BACKEND_AUTH_SECRET_KEY: ${BACKEND_AUTH_SECRET_KEY:-diasense-dev-secret}
+      BACKEND_AUTH_TOKEN_TTL_SECONDS: ${BACKEND_AUTH_TOKEN_TTL_SECONDS:-43200}
+    ports:
+      - "${BACKEND_API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      model-server:
+        condition: service_started
+      mlflow-tracking:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health').status==200 else 1)"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
   model-server:
     build:
       context: ./infra/mlflow
