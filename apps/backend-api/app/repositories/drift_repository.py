@@ -6,6 +6,20 @@ class DriftRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def latest_drift_detected(self) -> int:
+        stmt = text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM drift_reports
+                WHERE report_date = (SELECT MAX(report_date) FROM drift_reports)
+                  AND status <> 'stable'
+            ) AS drift_detected
+            """
+        )
+        row = self.db.execute(stmt).mappings().one()
+        return 1 if bool(row["drift_detected"]) else 0
+
     def latest(self) -> tuple[str | None, list[dict]]:
         date_stmt = text("SELECT MAX(report_date) AS report_date FROM drift_reports")
         row = self.db.execute(date_stmt).mappings().first()

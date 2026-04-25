@@ -6,6 +6,11 @@ class PipelineRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def count_runs(self) -> int:
+        stmt = text("SELECT COUNT(*) AS count FROM pipeline_runs")
+        row = self.db.execute(stmt).mappings().one()
+        return int(row["count"])
+
     def list_runs(self, limit: int) -> list[dict]:
         stmt = text(
             """

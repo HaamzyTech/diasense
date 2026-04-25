@@ -200,9 +200,16 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      backend-api:
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana-oss:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     volumes:
