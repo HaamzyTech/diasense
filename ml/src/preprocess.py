@@ -230,7 +230,8 @@ def main() -> None:
     write_csv(ROOT / data_dir / features_dir/ train_data, train_fit_df)
     write_csv(ROOT / data_dir / features_dir/ val_data, val_fit_df)
     write_csv(ROOT / data_dir / features_dir/ test_data, test_fit_df)
-    save_json(ROOT / artifacts_dir / reports_dir / prep_artifact_file, artifact)
+    preprocessing_artifact_path = ROOT / artifacts_dir / reports_dir / prep_artifact_file
+    save_json(preprocessing_artifact_path, artifact)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 from config import ROOT
+from utils.runtime import resolve_experiment_name, resolve_tracking_uri
 from utils.io import ensure_dirs, load_dataframe, parse_args, read_params, save_json, save_model
 
 
@@ -300,15 +302,14 @@ def main():
 
     mlflow, sklearn_mlflow, infer_signature = import_mlflow_dependencies()
     mlflow_params = params["mlflow"]
-    tracking_uri = mlflow_params["tracking_uri"]
+    tracking_uri = resolve_tracking_uri(mlflow_params.get("tracking_uri"))
 
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
 
     print("Tracking URI:", mlflow.get_tracking_uri())
-    print("Artifact URI:", mlflow.get_artifact_uri())
 
-    experiment_name = str(mlflow_params.get("experiment_name","diabetes_risk_predictor"))
+    experiment_name = resolve_experiment_name(mlflow_params)
     mlflow.set_experiment(experiment_name)
 
     train_path = ROOT / data_dir / features_dir / train_data
@@ -325,6 +326,7 @@ def main():
 
     while mlflow.active_run() is not None:
         mlflow.end_run()
+    os.environ.pop("MLFLOW_RUN_ID", None)
 
     with mlflow.start_run(run_name=mlflow_params["train_run_name"]) as parent_run:
         parent_run_id = parent_run.info.run_id
@@ -442,18 +444,19 @@ def main():
                         mlflow.log_artifact(str(artifact_file), artifact_path=model_name)
 
                 signature = infer_signature(X_train.head(20), pipeline.predict(X_train.head(20)))
-                mlflow.sklearn.log_model(
+                model_info = mlflow.sklearn.log_model(
                     sk_model=pipeline,
-                    artifact_path="model",
+                    name="model",
                     signature=signature,
                     input_example=X_train.head(5),
                 )
 
-                model_uri = f"runs:/{child_run_id}/model"
+                model_uri = str(getattr(model_info, "model_uri", f"runs:/{child_run_id}/model"))
                 result_record = {
                     "model_name": model_name,
                     "run_id": child_run_id,
                     "model_uri": model_uri,
+                    "model_id": getattr(model_info, "model_id", None),
                     "train_metrics": train_metrics,
                     "val_metrics": val_metrics,
                     "artifact_dir": str(report_path),

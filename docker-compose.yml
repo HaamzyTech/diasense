@@ -2,9 +2,14 @@ services:
   model-server:
     build:
       context: ./infra/mlflow
-    command: ["mlflow", "models", "serve", "-m", "models:/diasense-diabetes-risk/Production", "-p", "5001", "--host", "0.0.0.0"]
+    command: ["mlflow", "models", "serve", "-m", "models:/diasense-diabetes-risk/Production", "-p", "5001", "--host", "0.0.0.0", "--env-manager", "local"]
     environment:
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow-tracking:5000}
+      MLFLOW_S3_ENDPOINT_URL: ${MINIO_ENDPOINT_URL:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_EC2_METADATA_DISABLED: "true"
     ports:
       - "${MODEL_SERVER_PORT:-5001}:5001"
     depends_on:
@@ -33,13 +38,75 @@ services:
       timeout: 5s
       retries: 8
 
+  minio:
+    image: quay.io/minio/minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-create-bucket:
+    image: quay.io/minio/mc
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until mc alias set local ${MINIO_ENDPOINT_URL:-http://minio:9000} ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
+          sleep 2
+        done
+        mc mb --ignore-existing local/${MLFLOW_ARTIFACTS_BUCKET:-mlflow}
+    depends_on:
+      minio:
+        condition: service_started
+    restart: "no"
+
   mlflow-tracking:
     image: ghcr.io/mlflow/mlflow:latest
-    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000", "--backend-store-uri", "sqlite:///mlflow.db", "--default-artifact-root", "/mlflow/artifacts"]
+    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000", "--backend-store-uri", "sqlite:////mlflow/mlflow.db", "--default-artifact-root", "mlflow-artifacts:/", "--artifacts-destination", "s3://${MLFLOW_ARTIFACTS_BUCKET:-mlflow}", "--allowed-hosts", "localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,mlflow-tracking,mlflow-tracking:5000"]
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: ${MINIO_ENDPOINT_URL:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_EC2_METADATA_DISABLED: "true"
     ports:
       - "${MLFLOW_TRACKING_PORT:-5000}:5000"
     volumes:
       - ./infra/mlflow_data:/mlflow
+    depends_on:
+      minio-create-bucket:
+        condition: service_completed_successfully
+
+  ml:
+    build:
+      context: ./ml
+      args:
+        USER_ID: ${UID:-1000}
+        GROUP_ID: ${GID:-1000}
+    working_dir: /workspace/ml
+    command: ["sleep", "infinity"]
+    stdin_open: true
+    tty: true
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      PYTHONPATH: /workspace/ml/src
+      MLFLOW_TRACKING_URI: http://mlflow-tracking:5000
+      MLFLOW_S3_ENDPOINT_URL: ${MINIO_ENDPOINT_URL:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_EC2_METADATA_DISABLED: "true"
+    volumes:
+      - .:/workspace
+      - ./infra/mlflow_data:/mlflow
+    depends_on:
+      mlflow-tracking:
+        condition: service_started
 
   prometheus:
     image: prom/prometheus:latest
@@ -62,3 +129,4 @@ services:
 volumes:
   postgres_data:
   mlflow_data:
+  minio_data:

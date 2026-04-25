@@ -1,0 +1,8 @@
+[core]
+    no_scm = false
+    remote = minio
+['remote "minio"']
+    url = s3://mlflow/dvc
+    endpointurl = http://minio:9000
+    region = us-east-1
+    use_ssl = false

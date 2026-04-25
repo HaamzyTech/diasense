@@ -1,4 +1,6 @@
+dvc[s3]
 joblib
+mlflow==3.11.1
 pandas
 requests
 scikit-learn

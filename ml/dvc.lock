@@ -1,0 +1,223 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python src/ingest.py --config params.yaml
+    deps:
+    - path: src/config.py
+      hash: md5
+      md5: 76da40d443d594db50f3b3f15cab1653
+      size: 68
+    - path: src/ingest.py
+      hash: md5
+      md5: 1c2c51baab5196151a87680640c3dd3d
+      size: 2753
+    - path: src/utils/io.py
+      hash: md5
+      md5: ef170f1caf5d3672bffb54a3065ef931
+      size: 2266
+    params:
+      params.yaml:
+        data.source_url: 
+          https://raw.githubusercontent.com/npradaschnor/Pima-Indians-Diabetes-Dataset/refs/heads/master/diabetes.csv
+        data.time_out: 60
+        files.dataset: diabetes.csv
+        files.metrics: raw_metrics.json
+        files.schema: raw_schema.json
+        paths.ARTIFACTS_DIR: artifacts
+        paths.DATA_DIR: data
+        paths.raw_data: raw
+        paths.report_dir: reports
+    outs:
+    - path: artifacts/reports/raw_metrics.json
+      hash: md5
+      md5: 00f215cd15cee4fbbb0d8ad044e31cd3
+      size: 184
+    - path: artifacts/reports/raw_schema.json
+      hash: md5
+      md5: 2950b04061bdd070df79c04c80331c6a
+      size: 1116
+    - path: data/raw/diabetes.csv
+      hash: md5
+      md5: b43dd020fa775d93fced49f959c227ed
+      size: 23105
+  validate:
+    cmd: python src/validate.py --config params.yaml
+    deps:
+    - path: data/raw/diabetes.csv
+      hash: md5
+      md5: b43dd020fa775d93fced49f959c227ed
+      size: 23105
+    - path: src/config.py
+      hash: md5
+      md5: 76da40d443d594db50f3b3f15cab1653
+      size: 68
+    - path: src/utils/io.py
+      hash: md5
+      md5: ef170f1caf5d3672bffb54a3065ef931
+      size: 2266
+    - path: src/validate.py
+      hash: md5
+      md5: fd65cbb30221b72d43a15e0abb9541e0
+      size: 2754
+    params:
+      params.yaml:
+        files.dataset: diabetes.csv
+        files.validated_dataset: validated.csv
+        files.validation_report: validation_report.json
+        paths.ARTIFACTS_DIR: artifacts
+        paths.DATA_DIR: data
+        paths.raw_data: raw
+        paths.report_dir: reports
+        paths.validated_data: validated
+        schema.expected_cols:
+        - Pregnancies
+        - Glucose
+        - BloodPressure
+        - SkinThickness
+        - Insulin
+        - BMI
+        - DiabetesPedigreeFunction
+        - Age
+        - Outcome
+        schema.rename_map:
+          Pregnancies: pregnancies
+          Glucose: glucose
+          BloodPressure: blood_pressure
+          SkinThickness: skin_thickness
+          Insulin: insulin
+          BMI: bmi
+          DiabetesPedigreeFunction: diabetes_pedigree_function
+          Age: age
+          Outcome: outcome
+        schema.valid_ranges:
+          pregnancies:
+            min: 0
+            max: 20
+          glucose:
+            min: 40
+            max: 250
+          blood_pressure:
+            min: 24
+            max: 140
+          skin_thickness:
+            min: 7
+            max: 99
+          insulin:
+            min: 14
+            max: 900
+          bmi:
+            min: 10
+            max: 70
+          diabetes_pedigree_function:
+            min: 0.05
+            max: 3
+          age:
+            min: 18
+            max: 100
+          outcome:
+            min: 0
+            max: 1
+    outs:
+    - path: artifacts/reports/validation_report.json
+      hash: md5
+      md5: 98231ae54d32ed29789a240c1f4856a2
+      size: 917
+    - path: data/validated/validated.csv
+      hash: md5
+      md5: 7067520a0d92c49b6c171dbd32207e4d
+      size: 23294
+  preprocess:
+    cmd: python src/preprocess.py --config params.yaml
+    deps:
+    - path: data/validated/validated.csv
+      hash: md5
+      md5: 7067520a0d92c49b6c171dbd32207e4d
+      size: 23294
+    - path: src/config.py
+      hash: md5
+      md5: 76da40d443d594db50f3b3f15cab1653
+      size: 68
+    - path: src/preprocess.py
+      hash: md5
+      md5: d4c977935b1c1faad46117be63b20da7
+      size: 9388
+    - path: src/utils/io.py
+      hash: md5
+      md5: ef170f1caf5d3672bffb54a3065ef931
+      size: 2266
+    params:
+      params.yaml:
+        data.random_state: 42
+        data.target_column: outcome
+        data.test_size: 0.1
+        data.train_size: 0.8
+        data.val_size: 0.1
+        files.preprocessing_artifact: preprocessing_artifact.json
+        files.processed_dataset: processed.csv
+        files.raw_snapshot: raw_snapshot.csv
+        files.test_set: test.csv
+        files.train_set: train.csv
+        files.val_set: val.csv
+        files.validated_dataset: validated.csv
+        paths.ARTIFACTS_DIR: artifacts
+        paths.DATA_DIR: data
+        paths.feature_data: features
+        paths.processed_data: processed
+        paths.report_dir: reports
+        paths.validated_data: validated
+        preprocess.outlier:
+          enabled: true
+          method: iqr
+          multiplier: 1.5
+          columns:
+          - pregnancies
+          - glucose
+          - blood_pressure
+          - skin_thickness
+          - insulin
+          - bmi
+          - diabetes_pedigree_function
+          - age
+        schema.derived_features:
+          bmi_group: true
+          age_band: true
+        schema.feature_cols:
+        - pregnancies
+        - glucose
+        - blood_pressure
+        - skin_thickness
+        - insulin
+        - bmi
+        - diabetes_pedigree_function
+        - age
+        schema.zero_as_missing_columns:
+        - glucose
+        - blood_pressure
+        - skin_thickness
+        - insulin
+        - bmi
+    outs:
+    - path: artifacts/reports/preprocessing_artifact.json
+      hash: md5
+      md5: 868f1c1291c2ab15998d9fbd9514aa39
+      size: 831
+    - path: data/features/test.csv
+      hash: md5
+      md5: 4d2e7d3fbe34ca3f967d50a769f1b71c
+      size: 4650
+    - path: data/features/train.csv
+      hash: md5
+      md5: e92001253683baa259a91bff38014c45
+      size: 35826
+    - path: data/features/val.csv
+      hash: md5
+      md5: f3307bb9f1199abeebad5f7cf22773c3
+      size: 4599
+    - path: data/processed/processed.csv
+      hash: md5
+      md5: 7648cdfe0540dfe3e60044cd91f5db20
+      size: 44835
+    - path: data/processed/raw_snapshot.csv
+      hash: md5
+      md5: 7067520a0d92c49b6c171dbd32207e4d
+      size: 23294

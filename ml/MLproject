@@ -1,0 +1,41 @@
+name: diasense
+
+python_env: python_env.yaml
+
+entry_points:
+  main:
+    parameters:
+      config:
+        type: path
+        default: params.yaml
+    command: "python src/train.py --config {config} && python src/evaluate.py --config {config}"
+  ingest:
+    parameters:
+      config:
+        type: path
+        default: params.yaml
+    command: "python src/ingest.py --config {config}"
+  validate:
+    parameters:
+      config:
+        type: path
+        default: params.yaml
+    command: "python src/validate.py --config {config}"
+  preprocess:
+    parameters:
+      config:
+        type: path
+        default: params.yaml
+    command: "python src/preprocess.py --config {config}"
+  train:
+    parameters:
+      config:
+        type: path
+        default: params.yaml
+    command: "python src/train.py --config {config}"
+  evaluate:
+    parameters:
+      config:
+        type: path
+        default: params.yaml
+    command: "python src/evaluate.py --config {config}"

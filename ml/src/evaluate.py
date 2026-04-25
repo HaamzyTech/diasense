@@ -1,5 +1,7 @@
 
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +24,8 @@ from sklearn.metrics import (
 )
 
 from config import ROOT
-from utils.io import ensure_dirs, load_dataframe, load_model, parse_args, read_params, save_json
+from utils.io import ensure_dirs, load_dataframe, parse_args, read_params, save_json
+from utils.runtime import resolve_experiment_name, resolve_tracking_uri
 
 
 def import_mlflow_dependencies():
@@ -30,11 +33,12 @@ def import_mlflow_dependencies():
         import mlflow
         import mlflow.sklearn
         from mlflow.models import evaluate as mlflow_evaluate
+        from mlflow.tracking import MlflowClient
     except ImportError as e:
         raise ImportError(
             "MLflow is not installed. Install it with: pip install mlflow"
         ) from e
-    return mlflow, mlflow_evaluate
+    return mlflow, mlflow_evaluate, MlflowClient
 
 def resolve_candidates(ecfg: dict[str, Any]) -> list[dict[str, Any]]:
     if ecfg.get("model_uris"):
@@ -58,6 +62,114 @@ def resolve_candidates(ecfg: dict[str, Any]) -> list[dict[str, Any]]:
     if not models:
         raise ValueError("Train summary does not contain any candidate models.")
     return models
+
+
+def find_existing_model_version(client, registered_model_name: str, source_run_id: str | None):
+    if not source_run_id:
+        return None
+
+    try:
+        versions = client.search_model_versions(f"name='{registered_model_name}'")
+    except Exception:
+        return None
+
+    for version in versions:
+        if str(getattr(version, "run_id", "")) == str(source_run_id):
+            return version
+    return None
+
+
+def wait_for_model_version_ready(
+    client,
+    registered_model_name: str,
+    version: str,
+    timeout_seconds: int = 120,
+):
+    deadline = time.time() + timeout_seconds
+    last_status = ""
+
+    while time.time() < deadline:
+        model_version = client.get_model_version(
+            name=registered_model_name,
+            version=version,
+        )
+        status = str(getattr(model_version, "status", ""))
+        normalized_status = status.upper()
+
+        if normalized_status.endswith("READY") or not normalized_status:
+            return model_version
+        if normalized_status.endswith("FAILED_REGISTRATION"):
+            raise RuntimeError(
+                f"Model version {registered_model_name} v{version} failed registration."
+            )
+
+        last_status = status
+        time.sleep(2)
+
+    raise TimeoutError(
+        "Timed out waiting for registered model "
+        f"{registered_model_name} v{version} to become READY. Last status: {last_status}"
+    )
+
+
+def promote_best_model_for_serving(
+    mlflow,
+    client,
+    best_result: dict[str, Any],
+    registered_model_name: str,
+    serving_stage: str,
+    archive_existing_versions: bool,
+    primary_metric: str,
+) -> dict[str, Any]:
+    existing_version = find_existing_model_version(
+        client,
+        registered_model_name,
+        best_result.get("source_run_id"),
+    )
+
+    if existing_version is None:
+        registration = mlflow.register_model(best_result["model_uri"], registered_model_name)
+        version = str(getattr(registration, "version"))
+        model_version = wait_for_model_version_ready(client, registered_model_name, version)
+    else:
+        model_version = existing_version
+        version = str(getattr(model_version, "version"))
+
+    client.transition_model_version_stage(
+        name=registered_model_name,
+        version=version,
+        stage=serving_stage,
+        archive_existing_versions=archive_existing_versions,
+    )
+    client.set_model_version_tag(
+        name=registered_model_name,
+        version=version,
+        key="selected_for_serving",
+        value="true",
+    )
+    client.set_model_version_tag(
+        name=registered_model_name,
+        version=version,
+        key="selection_metric",
+        value=primary_metric,
+    )
+    client.set_model_version_tag(
+        name=registered_model_name,
+        version=version,
+        key="evaluation_run_id",
+        value=str(best_result["evaluation_run_id"]),
+    )
+
+    return {
+        "registered_model_name": registered_model_name,
+        "registered_model_version": version,
+        "serving_model_stage": serving_stage,
+        "source_run_id": str(getattr(model_version, "run_id", "")),
+        "evaluation_run_id": str(best_result["evaluation_run_id"]),
+        "primary_metric": primary_metric,
+        "primary_metric_value": best_result["test_metrics"].get(primary_metric),
+        "thresholds_passed": bool(best_result["thresholds"]["passed"]),
+    }
 
 def make_feature_frame(df: pd.DataFrame, target_column: str, drop_columns: list[str]) -> tuple[pd.DataFrame, pd.Series]:
     drop_set = set(drop_columns + [target_column])
@@ -200,13 +312,14 @@ def log_dataset_inputs(mlflow, from_pandas, run_df: pd.DataFrame, name: str) -> 
 def main():
     args = parse_args()
     params = read_params(Path(ROOT / args.config))
+    ensure_dirs(params)
 
     ev_params = params["evaluate"]
     file_param = params["files"]
     path_param = params["paths"]
     mlflow_param = params["mlflow"]
 
-    data_dir = params["DATA_DIR"]
+    data_dir = path_param["DATA_DIR"]
     artifacts_dir = path_param["ARTIFACTS_DIR"]
     reports_dir = path_param["report_dir"]
     feature_dir = path_param["feature_data"]
@@ -217,22 +330,34 @@ def main():
     label_col = params["schema"]["lable_col"]
     drop_columns = params["schema"]["drop_columns"]
     primary_metric = params["train"]["primary_metric"]
+    registered_model_name = str(
+        mlflow_param.get("registered_model_name", "diasense-diabetes-risk")
+    )
+    serving_model_stage = str(mlflow_param.get("serving_model_stage", "Production"))
+    archive_existing_versions = bool(
+        mlflow_param.get("archive_existing_versions", True)
+    )
 
     candidate_paths = {
-        "model_uris": ROOT / artifacts_dir / model_dir,
-        "train_summary_path": ROOT / artifacts_dir / reports_dir / file_param["train_summary"]
+        "model_uris": ev_params.get("model_uris"),
+        "train_summary_path": ROOT / artifacts_dir / reports_dir / file_param["train_summary"],
     }
     candidates = resolve_candidates(candidate_paths)
 
-    mlflow, mlflow_evaluate = import_mlflow_dependencies()
+    mlflow, mlflow_evaluate, MlflowClient = import_mlflow_dependencies()
 
-    tracking_uri = mlflow_param["tracking_uri"]
+    tracking_uri = resolve_tracking_uri(mlflow_param.get("tracking_uri"))
 
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
 
-    experiment_name = str(mlflow_param.get("experiment_name","diabetes_risk_predictor"))
+    experiment_name = resolve_experiment_name(mlflow_param)
     mlflow.set_experiment(experiment_name)
+    client = MlflowClient()
+
+    while mlflow.active_run() is not None:
+        mlflow.end_run()
+    os.environ.pop("MLFLOW_RUN_ID", None)
 
     test_path = ROOT / data_dir / feature_dir / test_data
     test_df = load_dataframe(test_path)
@@ -256,6 +381,8 @@ def main():
                 "target_column": label_col,
                 "test_rows": len(test_df),
                 "primary_metric": primary_metric,
+                "serving_registered_model_name": registered_model_name,
+                "serving_model_stage": serving_model_stage,
             }
         )
 
@@ -320,25 +447,6 @@ def main():
                     if artifact_file.exists():
                         mlflow.log_artifact(str(artifact_file), artifact_path=model_name)
             
-                evaluator_cfg = ev_params.get("mlflow_evaluator", {})
-                if evaluator_cfg.get("enabled", True):
-                    try:
-                        eval_data = X_test.copy()
-                        eval_data[label_col] = y_test.values
-                        mlflow_evaluate(
-                            model=model_uri,
-                            data=eval_data,
-                            targets=label_col,
-                            model_type="classifier",
-                            evaluators=["default"],
-                            evaluator_config={
-                                "log_explainer": bool(evaluator_cfg.get("log_explainer", False)),
-                            },
-                        )
-                    except Exception as e:
-                        save_json(model_artifact_dir / "mlflow_evaluate_warning.json", {"warning": str(e)})
-                        mlflow.log_artifact(str(model_artifact_dir / "mlflow_evaluate_warning.json"), artifact_path=model_name)
-
                 all_results.append(
                     {
                         "model_name": model_name,
@@ -352,6 +460,45 @@ def main():
                 )
 
         best_result = choose_best_evaluation(all_results, primary_metric)
+        evaluator_cfg = ev_params.get("mlflow_evaluator", {})
+        if evaluator_cfg.get("enabled", False):
+            best_model_artifact_dir = Path(best_result["artifact_dir"])
+            try:
+                with mlflow.start_run(
+                    run_name=f"mlflow_evaluate_{best_result['model_name']}",
+                    nested=True,
+                ):
+                    eval_data = X_test.copy()
+                    eval_data[label_col] = y_test.values
+                    mlflow_evaluate(
+                        model=best_result["model_uri"],
+                        data=eval_data,
+                        targets=label_col,
+                        model_type="classifier",
+                        evaluators=["default"],
+                        evaluator_config={
+                            "log_explainer": bool(
+                                evaluator_cfg.get("log_explainer", False)
+                            ),
+                        },
+                    )
+            except Exception as e:
+                warning_path = best_model_artifact_dir / "mlflow_evaluate_warning.json"
+                save_json(warning_path, {"warning": str(e)})
+                mlflow.log_artifact(
+                    str(warning_path),
+                    artifact_path=best_result["model_name"],
+                )
+
+        serving_selection = promote_best_model_for_serving(
+            mlflow=mlflow,
+            client=client,
+            best_result=best_result,
+            registered_model_name=registered_model_name,
+            serving_stage=serving_model_stage,
+            archive_existing_versions=archive_existing_versions,
+            primary_metric=primary_metric,
+        )
         summary = {
             "parent_run_id": parent_run_id,
             "tracking_uri": tracking_uri,
@@ -359,15 +506,34 @@ def main():
             "primary_metric": primary_metric,
             "best_model_name": best_result["model_name"],
             "best_model_uri": best_result["model_uri"],
+            "serving_model": serving_selection,
             "results": all_results,
         }
         summary_path = ROOT / artifacts_dir / reports_dir / ev_summary
         save_json(summary_path, summary)
         mlflow.log_artifact(str(summary_path), artifact_path="comparison")
         mlflow.log_param("best_model_name", best_result["model_name"])
+        mlflow.log_param("serving_registered_model_name", registered_model_name)
+        mlflow.log_param("serving_model_stage", serving_model_stage)
         for metric_name, metric_value_item in best_result["test_metrics"].items():
             mlflow.log_metric(f"best_test_{metric_name}", metric_value_item)
+        mlflow.set_tags(
+            {
+                "serving_registered_model_name": registered_model_name,
+                "serving_registered_model_version": serving_selection["registered_model_version"],
+                "serving_model_stage": serving_model_stage,
+            }
+        )
 
         print(f"[OK] Evaluated {len(all_results)} models.")
         print(f"[OK] Best test model by {primary_metric}: {best_result['model_name']}")
+        print(
+            "[OK] Selected serving model: "
+            f"{registered_model_name} v{serving_selection['registered_model_version']} "
+            f"({serving_model_stage})"
+        )
         print(f"[OK] Evaluation summary written to: {summary_path}")
+
+
+if __name__ == "__main__":
+    main()

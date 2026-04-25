@@ -1,0 +1,82 @@
+stages:
+  ingest:
+    cmd: python src/ingest.py --config params.yaml
+    deps:
+      - src/config.py
+      - src/ingest.py
+      - src/utils/io.py
+    params:
+      - data.source_url
+      - data.time_out
+      - paths.DATA_DIR
+      - paths.ARTIFACTS_DIR
+      - paths.raw_data
+      - paths.report_dir
+      - files.dataset
+      - files.schema
+      - files.metrics
+    outs:
+      - data/raw/diabetes.csv
+      - artifacts/reports/raw_metrics.json
+      - artifacts/reports/raw_schema.json
+
+  validate:
+    cmd: python src/validate.py --config params.yaml
+    deps:
+      - src/config.py
+      - src/validate.py
+      - src/utils/io.py
+      - data/raw/diabetes.csv
+    params:
+      - paths.DATA_DIR
+      - paths.ARTIFACTS_DIR
+      - paths.raw_data
+      - paths.validated_data
+      - paths.report_dir
+      - files.dataset
+      - files.validated_dataset
+      - files.validation_report
+      - schema.expected_cols
+      - schema.rename_map
+      - schema.valid_ranges
+    outs:
+      - data/validated/validated.csv
+      - artifacts/reports/validation_report.json
+
+  preprocess:
+    cmd: python src/preprocess.py --config params.yaml
+    deps:
+      - src/config.py
+      - src/preprocess.py
+      - src/utils/io.py
+      - data/validated/validated.csv
+    params:
+      - data.target_column
+      - data.train_size
+      - data.val_size
+      - data.test_size
+      - data.random_state
+      - paths.DATA_DIR
+      - paths.ARTIFACTS_DIR
+      - paths.validated_data
+      - paths.processed_data
+      - paths.feature_data
+      - paths.report_dir
+      - files.validated_dataset
+      - files.raw_snapshot
+      - files.processed_dataset
+      - files.train_set
+      - files.val_set
+      - files.test_set
+      - files.preprocessing_artifact
+      - schema.feature_cols
+      - schema.derived_features
+      - schema.zero_as_missing_columns
+      - preprocess.outlier
+    outs:
+      - data/processed/raw_snapshot.csv
+      - data/processed/processed.csv
+      - data/features/train.csv
+      - data/features/val.csv
+      - data/features/test.csv
+      - artifacts/reports/preprocessing_artifact.json

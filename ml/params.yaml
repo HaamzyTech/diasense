@@ -188,10 +188,13 @@ train:
       n_jobs: 1
 
 mlflow:
-  tracking_uri: http://localhost:5000
+  tracking_uri: http://mlflow-tracking:5000
   expreiment_name: diabetes-risk-predictor_model
   train_run_name: train_three_models_v1
   eval_run_name: evaluate-three-models-v1
+  registered_model_name: diasense-diabetes-risk
+  serving_model_stage: Production
+  archive_existing_versions: true
 
 evaluate:
   thresholds:
@@ -202,5 +205,5 @@ evaluate:
     maximums:
       log_loss: 0.70
   mlflow_evaluator:
-    enabled: true
+    enabled: false
     log_explainer: false
