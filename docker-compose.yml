@@ -69,6 +69,25 @@ services:
       timeout: 5s
       retries: 8
 
+  postgres-create-airflow-db:
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-diasense}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until pg_isready -h postgres -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-diasense} -d postgres; do
+          sleep 2
+        done
+        if ! psql -h postgres -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-diasense} -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${AIRFLOW_POSTGRES_DB:-airflow}'" | grep -q 1; then
+          psql -h postgres -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER:-diasense} -d postgres -c "CREATE DATABASE \"${AIRFLOW_POSTGRES_DB:-airflow}\""
+        fi
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   minio:
     image: quay.io/minio/minio
     command: ["server", "/data", "--console-address", ":9001"]
@@ -143,13 +162,30 @@ services:
     build:
       context: .
       dockerfile: airflow/Dockerfile
-    command: ["bash", "-lc", "mkdir -p /opt/airflow/logs && exec airflow standalone"]
+    command:
+      - bash
+      - -lc
+      - |
+        mkdir -p /opt/airflow/logs
+        python - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+
+        username = os.getenv("AIRFLOW_ADMIN_USER", "admin")
+        password = os.getenv("AIRFLOW_ADMIN_PASSWORD", "admin")
+        password_file = Path("/opt/airflow/simple_auth_manager_passwords.json")
+        password_file.write_text(json.dumps({username: password}) + "\n", encoding="utf-8")
+        PY
+        exec airflow standalone
     user: "${UID:-1000}:0"
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-diasense}:${POSTGRES_PASSWORD:-diasense}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-diasense}
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: ${AIRFLOW_ADMIN_USER:-admin}:ADMIN
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/simple_auth_manager_passwords.json
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-diasense}:${POSTGRES_PASSWORD:-diasense}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${AIRFLOW_POSTGRES_DB:-airflow}
       _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
@@ -184,12 +220,12 @@ services:
     ports:
       - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-create-airflow-db:
+        condition: service_completed_successfully
       mlflow-tracking:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health').status==200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/v2/monitor/health').status==200 else 1)"]
       interval: 20s
       timeout: 5s
       retries: 10
