@@ -67,8 +67,10 @@ def emit_alert_metrics(**context) -> None:
     report_path = drift_report_path(params)
     report = load_json(report_path) if report_path.exists() else {"features": [], "drift_detected": False}
     try:
+        raw_features = report.get("features", [])
+        features = [feature for feature in raw_features if isinstance(feature, dict)]
         drifted_features = [
-            feature for feature in report.get("features", []) if feature.get("status") == "drift"
+            feature for feature in features if feature.get("status") == "drift"
         ]
         lines = [
             "# HELP drift_detected_gauge Whether the monitoring pipeline detected feature drift.",
@@ -77,28 +79,46 @@ def emit_alert_metrics(**context) -> None:
             "# HELP drift_feature_count Number of features currently marked as drifted.",
             "# TYPE drift_feature_count gauge",
             f"drift_feature_count {len(drifted_features)}",
+            "# HELP feature_drift_status Whether a specific feature is currently marked as drifted.",
+            "# TYPE feature_drift_status gauge",
+            "# HELP feature_drift_psi Population stability index for a specific feature.",
+            "# TYPE feature_drift_psi gauge",
+            "# HELP feature_drift_ks_stat Kolmogorov-Smirnov statistic for a specific feature.",
+            "# TYPE feature_drift_ks_stat gauge",
         ]
 
-        for feature in report.get("features", []):
-            safe_feature = str(feature["feature_name"]).replace('"', '\\"')
+        for feature in features:
+            feature_name = str(feature.get("feature_name") or feature.get("feature") or "unknown")
+            safe_feature = feature_name.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
             lines.append(
                 f'feature_drift_status{{feature="{safe_feature}"}} {1 if feature.get("status") == "drift" else 0}'
             )
-            if feature.get("psi") is not None:
+            psi = feature.get("psi")
+            if isinstance(psi, (int, float)):
                 lines.append(
-                    f'feature_drift_psi{{feature="{safe_feature}"}} {float(feature["psi"])}'
+                    f'feature_drift_psi{{feature="{safe_feature}"}} {float(psi)}'
                 )
-            if feature.get("ks_stat") is not None:
+            ks_stat = feature.get("ks_stat")
+            if isinstance(ks_stat, (int, float)):
                 lines.append(
-                    f'feature_drift_ks_stat{{feature="{safe_feature}"}} {float(feature["ks_stat"])}'
+                    f'feature_drift_ks_stat{{feature="{safe_feature}"}} {float(ks_stat)}'
                 )
 
-        emit_system_events_for_drift(report)
-        pipeline_status = finalize_pipeline_run(
-            context=context,
-            pipeline_name=PIPELINE_NAME,
-            final_task_id="emit_alert_metrics",
-        )
+        try:
+            emit_system_events_for_drift({**report, "features": features})
+        except Exception as exc:
+            print(f"emit_alert_metrics: unable to persist drift system events: {exc}")
+
+        try:
+            pipeline_status = finalize_pipeline_run(
+                context=context,
+                pipeline_name=PIPELINE_NAME,
+                final_task_id="emit_alert_metrics",
+            )
+        except Exception as exc:
+            print(f"emit_alert_metrics: unable to finalize pipeline run: {exc}")
+            pipeline_status = "failed"
+
         lines.extend(
             [
                 "# HELP monitoring_pipeline_run_status Whether the latest monitoring pipeline run finished successfully.",
