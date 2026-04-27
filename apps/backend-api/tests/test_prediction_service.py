@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.auth_context import CurrentUser
 from app.services.prediction_service import (
     PredictionService,
     derive_age_band,
@@ -49,6 +50,23 @@ class DummyClient:
                 "top_factors": [{"feature": "glucose", "importance": 0.8}],
             }
         ]
+
+    def predict_probability(self, _model_uri, _records):
+        return 0.9
+
+
+class DummyLabelOnlyClient:
+    def __init__(self) -> None:
+        self.last_records = None
+        self.last_probability_request = None
+
+    def invoke(self, records):
+        self.last_records = records
+        return [1]
+
+    def predict_probability(self, model_uri, records):
+        self.last_probability_request = (model_uri, records)
+        return 0.7345
 
 
 class DummySystemEventRepo:
@@ -106,8 +124,6 @@ def test_prediction_service_creates_contract_response() -> None:
 
     result = service.create_prediction(
         {
-            "session_id": "11111111-1111-1111-1111-111111111111",
-            "actor_role": "patient",
             "pregnancies": 2,
             "glucose": 138.0,
             "blood_pressure": 72.0,
@@ -116,13 +132,22 @@ def test_prediction_service_creates_contract_response() -> None:
             "bmi": 33.6,
             "diabetes_pedigree_function": 0.627,
             "age": 50,
-        }
+        },
+        current_user=CurrentUser(
+            username="patient.one",
+            email="patient@example.com",
+            role="patient",
+            auth_source="database",
+            access_token="token",
+        ),
     )
 
     assert result["risk_band"] == "high"
     assert result["predicted_label"] is True
     assert result["risk_probability"] == 0.9
     assert result["top_factors"][0]["feature"] == "glucose"
+    assert result["submitted_by"] == "patient@example.com"
+    assert result["patient_email"] == "patient@example.com"
     assert model_client.last_records == [
         {
             "pregnancies": 2,
@@ -137,3 +162,53 @@ def test_prediction_service_creates_contract_response() -> None:
             "age_band": "middle_age",
         }
     ]
+
+
+def test_prediction_service_falls_back_to_registered_model_probability() -> None:
+    model_client = DummyLabelOnlyClient()
+    service = PredictionService(
+        prediction_repo=DummyPredictionRepo(),
+        model_repo=DummyModelRepo(),
+        model_server_client=model_client,
+        system_event_repo=DummySystemEventRepo(),
+    )
+
+    result = service.create_prediction(
+        {
+            "pregnancies": 1,
+            "glucose": 121.0,
+            "blood_pressure": 68.0,
+            "skin_thickness": 20.0,
+            "insulin": 85.0,
+            "bmi": 27.4,
+            "diabetes_pedigree_function": 0.391,
+            "age": 38,
+        },
+        current_user=CurrentUser(
+            username="clinician.one",
+            email="clinician@example.com",
+            role="clinician",
+            auth_source="database",
+            access_token="token",
+        ),
+    )
+
+    assert result["predicted_label"] is True
+    assert result["risk_probability"] == 0.7345
+    assert model_client.last_probability_request == (
+        "33333333-3333-3333-3333-333333333333",
+        [
+            {
+                "pregnancies": 1,
+                "glucose": 121.0,
+                "blood_pressure": 68.0,
+                "skin_thickness": 20.0,
+                "insulin": 85.0,
+                "bmi": 27.4,
+                "bmi_group": "overweight",
+                "diabetes_pedigree_function": 0.391,
+                "age": 38,
+                "age_band": "adult",
+            }
+        ],
+    )

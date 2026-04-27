@@ -12,6 +12,8 @@ class PredictionRequest(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    submitted_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    patient_email: Mapped[str] = mapped_column(String(255), nullable=False)
     actor_role: Mapped[str] = mapped_column(String(20), nullable=False)
     pregnancies: Mapped[int] = mapped_column(Integer, nullable=False)
     glucose: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)

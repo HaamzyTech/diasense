@@ -1,14 +1,16 @@
 from time import perf_counter
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from app.clients.model_server import ModelServerClient
-from app.core.exceptions import DependencyError, NotFoundError, ValidationError
-from app.core.time import to_iso8601
+from app.core.auth_context import CurrentUser
+from app.core.exceptions import AuthorizationError, DependencyError, NotFoundError, ValidationError
+from app.core.time import to_iso8601, utc_now
 from app.metrics.prometheus import (
     MODEL_INFERENCE_LATENCY_MS,
     PREDICTION_ERRORS_TOTAL,
     PREDICTION_REQUESTS_TOTAL,
 )
+from app.repositories.auth_user_repository import AuthUserRepository
 from app.repositories.model_version_repository import ModelVersionRepository
 from app.repositories.prediction_repository import PredictionRepository
 from app.repositories.system_event_repository import SystemEventRepository
@@ -61,14 +63,25 @@ class PredictionService:
         model_repo: ModelVersionRepository,
         model_server_client: ModelServerClient,
         system_event_repo: SystemEventRepository | None = None,
+        auth_user_repo: AuthUserRepository | None = None,
     ) -> None:
         self.prediction_repo = prediction_repo
         self.model_repo = model_repo
         self.model_server_client = model_server_client
         self.system_event_repo = system_event_repo
+        self.auth_user_repo = auth_user_repo
 
-    def create_prediction(self, payload: dict) -> dict:
-        request_payload = {**payload, "source": payload.get("source", "web")}
+    def create_prediction(self, payload: dict, current_user: CurrentUser) -> dict:
+        patient_email = self._resolve_patient_email(payload.get("patient_email"), current_user)
+        model_input = self._model_input(payload)
+        request_payload = {
+            **payload,
+            "session_id": self._session_id_for_patient(patient_email),
+            "submitted_by": self._normalize_subject(current_user.email or current_user.username),
+            "patient_email": patient_email,
+            "actor_role": current_user.role,
+            "source": payload.get("source", "web"),
+        }
         request_row = self.prediction_repo.create_request(request_payload)
 
         active_model = self.model_repo.get_active()
@@ -78,7 +91,7 @@ class PredictionService:
 
         try:
             started_at = perf_counter()
-            model_output = self.model_server_client.invoke([self._model_input(payload)])
+            model_output = self.model_server_client.invoke([model_input])
             latency_ms = max(int((perf_counter() - started_at) * 1000), 0)
             MODEL_INFERENCE_LATENCY_MS.set(latency_ms)
         except Exception:
@@ -91,7 +104,11 @@ class PredictionService:
             raise
 
         first_result = model_output[0] if model_output else {}
-        probability = self._extract_probability(first_result)
+        probability = self._resolve_probability(
+            payload=first_result,
+            active_model=active_model,
+            model_input=model_input,
+        )
         risk_band = map_risk_band(probability)
         interpretation = interpretation_for_band(risk_band)
         predicted_label = bool(first_result.get("predicted_label", probability >= 0.5))
@@ -116,6 +133,8 @@ class PredictionService:
         return {
             "request_id": request_row["id"],
             "model_version_id": UUID(str(active_model["id"])),
+            "submitted_by": request_payload["submitted_by"],
+            "patient_email": patient_email,
             "predicted_label": predicted_label,
             "risk_probability": round(probability, 4),
             "risk_band": risk_band,
@@ -125,10 +144,11 @@ class PredictionService:
             "created_at": to_iso8601(result_row["created_at"]),
         }
 
-    def get_prediction(self, request_id: UUID) -> dict:
+    def get_prediction(self, request_id: UUID, current_user: CurrentUser) -> dict:
         row = self.prediction_repo.get_prediction(request_id=request_id)
         if not row:
             raise NotFoundError(f"Prediction request {request_id} not found")
+        self._ensure_prediction_access(row, current_user)
 
         explanation = row.get("explanation") or {}
         if isinstance(explanation, str):
@@ -137,6 +157,8 @@ class PredictionService:
         request = {
             "id": row["id"],
             "session_id": row["session_id"],
+            "submitted_by": row["submitted_by"],
+            "patient_email": row["patient_email"],
             "actor_role": row["actor_role"],
             "pregnancies": row["pregnancies"],
             "glucose": float(row["glucose"]),
@@ -165,8 +187,14 @@ class PredictionService:
         }
         return {"request": request, "result": result}
 
-    def list_predictions(self, session_id: UUID, limit: int = 20) -> dict:
-        items = self.prediction_repo.list_predictions(session_id=session_id, limit=limit)
+    def list_predictions(
+        self,
+        current_user: CurrentUser,
+        limit: int = 20,
+        patient_email: str | None = None,
+    ) -> dict:
+        normalized_patient_email = self._resolve_prediction_filter(patient_email, current_user)
+        items = self.prediction_repo.list_predictions(limit=limit, patient_email=normalized_patient_email)
         normalized_items: list[dict] = []
         for item in items:
             explanation = item.get("explanation") or {}
@@ -175,6 +203,9 @@ class PredictionService:
             normalized_items.append(
                 {
                     "request_id": item["request_id"],
+                    "submitted_by": item["submitted_by"],
+                    "patient_email": item["patient_email"],
+                    "actor_role": item["actor_role"],
                     "risk_probability": round(float(item["risk_probability"]), 4),
                     "risk_band": item["risk_band"],
                     "predicted_label": item["predicted_label"],
@@ -185,7 +216,47 @@ class PredictionService:
                     "created_at": to_iso8601(item["created_at"]),
                 }
             )
-        return {"session_id": session_id, "items": normalized_items, "count": len(normalized_items)}
+        return {"items": normalized_items, "count": len(normalized_items)}
+
+    def list_my_predictions(self, current_user: CurrentUser, limit: int = 20) -> dict:
+        return self.list_predictions(current_user=current_user, limit=limit, patient_email=self._current_reference(current_user))
+
+    def delete_prediction(self, request_id: UUID, current_user: CurrentUser) -> dict:
+        row = self.prediction_repo.get_prediction(request_id=request_id)
+        if not row:
+            raise NotFoundError(f"Prediction request {request_id} not found")
+        self._ensure_prediction_access(row, current_user)
+
+        deleted = self.prediction_repo.delete_prediction_request(request_id=request_id)
+        if deleted is None:
+            raise NotFoundError(f"Prediction request {request_id} not found")
+
+        return {
+            "message": "Prediction result deleted successfully",
+            "request_id": deleted["id"],
+            "patient_email": deleted["patient_email"],
+            "submitted_by": deleted["submitted_by"],
+            "actor_role": deleted["actor_role"],
+            "deleted_at": to_iso8601(utc_now()),
+        }
+
+    def _resolve_probability(
+        self,
+        payload: dict,
+        active_model: dict,
+        model_input: dict,
+    ) -> float:
+        if payload.get("risk_probability") is not None or payload.get("probability") is not None:
+            return self._extract_probability(payload)
+
+        model_uri = str(active_model.get("mlflow_model_uri") or "").strip()
+        if not model_uri:
+            raise DependencyError("The active model does not expose a model URI for probability inference")
+
+        probability_value = self.model_server_client.predict_probability(model_uri, [model_input])
+        if not 0 <= probability_value <= 1:
+            raise ValidationError("Model probability inference returned out-of-range probability")
+        return probability_value
 
     def _extract_probability(self, payload: dict) -> float:
         probability = payload.get("risk_probability", payload.get("probability"))
@@ -238,3 +309,72 @@ class PredictionService:
             )
         except Exception:
             return
+
+    def _resolve_patient_email(self, patient_email: str | None, current_user: CurrentUser) -> str:
+        current_subject = self._current_reference(current_user)
+        requested_email = self._normalize_subject(patient_email) if patient_email else current_subject
+
+        if current_user.role == "patient":
+            if requested_email != current_subject:
+                raise AuthorizationError("Patients can only submit assessments for themselves")
+            return current_subject
+
+        if requested_email == current_subject:
+            return current_subject
+
+        if current_user.role not in {"clinician", "admin"}:
+            raise AuthorizationError()
+
+        if self.auth_user_repo is None:
+            raise ValidationError("Auth user repository is not configured")
+
+        patient_user = self.auth_user_repo.get_by_identifier(requested_email)
+        if patient_user is None:
+            raise ValidationError("Patient account not found")
+        return self._account_reference(patient_user)
+
+    def _resolve_prediction_filter(self, patient_email: str | None, current_user: CurrentUser) -> str | None:
+        if current_user.role == "patient":
+            return self._current_reference(current_user)
+
+        if patient_email is None or patient_email.strip() == "":
+            return None
+
+        requested_email = self._normalize_subject(patient_email)
+        if requested_email == self._current_reference(current_user):
+            return requested_email
+
+        if current_user.role not in {"clinician", "admin"}:
+            raise AuthorizationError()
+
+        if self.auth_user_repo is None:
+            raise ValidationError("Auth user repository is not configured")
+
+        patient_user = self.auth_user_repo.get_by_identifier(requested_email)
+        if patient_user is None:
+            raise NotFoundError(f"Patient {requested_email} not found")
+        return self._account_reference(patient_user)
+
+    def _ensure_prediction_access(self, row: dict, current_user: CurrentUser) -> None:
+        if current_user.role in {"clinician", "admin"}:
+            return
+        patient_email = self._normalize_subject(str(row["patient_email"]))
+        if patient_email != self._current_reference(current_user):
+            raise AuthorizationError("You do not have permission to view this prediction")
+
+    def _session_id_for_patient(self, patient_email: str) -> UUID:
+        return uuid5(NAMESPACE_URL, f"https://diasense.local/patients/{patient_email}")
+
+    def _normalize_subject(self, subject: str | None) -> str:
+        if subject is None:
+            raise ValidationError("A patient account is required")
+        normalized = subject.strip().lower()
+        if not normalized:
+            raise ValidationError("A patient account is required")
+        return normalized
+
+    def _current_reference(self, current_user: CurrentUser) -> str:
+        return self._normalize_subject(current_user.email or current_user.username)
+
+    def _account_reference(self, user: dict) -> str:
+        return self._normalize_subject(str(user.get("email") or user["username"]))

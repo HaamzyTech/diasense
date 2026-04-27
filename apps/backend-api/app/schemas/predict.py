@@ -6,8 +6,7 @@ from app.schemas.base import APIModel
 
 
 class PredictRequest(APIModel):
-    session_id: UUID
-    actor_role: str
+    patient_email: str | None = None
     pregnancies: int = Field(ge=0, le=30)
     glucose: float = Field(ge=0, le=300)
     blood_pressure: float = Field(ge=0, le=200)
@@ -26,6 +25,8 @@ class TopFactor(APIModel):
 class PredictResponse(APIModel):
     request_id: UUID
     model_version_id: UUID
+    submitted_by: str
+    patient_email: str
     predicted_label: bool
     risk_probability: float
     risk_band: str
@@ -38,6 +39,8 @@ class PredictResponse(APIModel):
 class PredictionRequestRecord(APIModel):
     id: UUID
     session_id: UUID
+    submitted_by: str
+    patient_email: str
     actor_role: str
     pregnancies: int
     glucose: float
@@ -70,6 +73,9 @@ class PredictionDetailResponse(APIModel):
 
 class PredictionListItem(APIModel):
     request_id: UUID
+    submitted_by: str
+    patient_email: str
+    actor_role: str
     risk_probability: float
     risk_band: str
     predicted_label: bool
@@ -78,11 +84,18 @@ class PredictionListItem(APIModel):
 
 
 class PredictionListResponse(APIModel):
-    session_id: UUID
     items: list[PredictionListItem]
     count: int
 
 
+class DeletePredictionResponse(APIModel):
+    message: str
+    request_id: UUID
+    patient_email: str
+    submitted_by: str
+    actor_role: str
+    deleted_at: str
+
+
 class MyPredictionsRequest(APIModel):
-    session_id: UUID
     limit: int = Field(default=20, ge=1, le=100)

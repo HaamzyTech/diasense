@@ -8,11 +8,14 @@ from app.main import app
 
 
 class DummyService:
-    def create_prediction(self, payload: dict) -> dict:
+    def create_prediction(self, payload: dict, current_user) -> dict:
         assert payload["glucose"] == 138.0
+        assert current_user.role == "patient"
         return {
             "request_id": uuid4(),
             "model_version_id": uuid4(),
+            "submitted_by": "user@example.com",
+            "patient_email": "user@example.com",
             "predicted_label": True,
             "risk_probability": 0.8123,
             "risk_band": "high",
@@ -30,11 +33,29 @@ class DummyService:
 @pytest.mark.anyio
 async def test_predict_endpoint(monkeypatch) -> None:
     monkeypatch.setattr(predict_endpoint, "get_prediction_service", lambda _db: DummyService())
+    monkeypatch.setattr(
+        predict_endpoint,
+        "require_current_user",
+        lambda _db, _request: type(
+            "CurrentUser",
+            (),
+            {
+                "username": "user",
+                "email": "user@example.com",
+                "role": "patient",
+                "auth_source": "database",
+                "access_token": "token",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        predict_endpoint,
+        "db_session_scope",
+        lambda: __import__("contextlib").nullcontext(object()),
+    )
 
     transport = httpx.ASGITransport(app=app)
     payload = {
-        "session_id": "11111111-1111-1111-1111-111111111111",
-        "actor_role": "patient",
         "pregnancies": 2,
         "glucose": 138,
         "blood_pressure": 72,
@@ -57,8 +78,6 @@ async def test_predict_endpoint(monkeypatch) -> None:
 async def test_predict_endpoint_rejects_invalid_payload() -> None:
     transport = httpx.ASGITransport(app=app)
     payload = {
-        "session_id": "11111111-1111-1111-1111-111111111111",
-        "actor_role": "patient",
         "pregnancies": -1,
         "glucose": 138,
         "blood_pressure": 72,

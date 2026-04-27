@@ -14,6 +14,8 @@ class PredictionRepository:
             """
             INSERT INTO prediction_requests (
                 session_id,
+                submitted_by,
+                patient_email,
                 actor_role,
                 pregnancies,
                 glucose,
@@ -26,6 +28,8 @@ class PredictionRepository:
                 source
             ) VALUES (
                 :session_id,
+                :submitted_by,
+                :patient_email,
                 :actor_role,
                 :pregnancies,
                 :glucose,
@@ -40,6 +44,8 @@ class PredictionRepository:
             RETURNING
                 id,
                 session_id,
+                submitted_by,
+                patient_email,
                 actor_role,
                 pregnancies,
                 glucose,
@@ -106,6 +112,8 @@ class PredictionRepository:
             SELECT
                 pr.id,
                 pr.session_id,
+                pr.submitted_by,
+                pr.patient_email,
                 pr.actor_role,
                 pr.pregnancies,
                 pr.glucose,
@@ -133,11 +141,13 @@ class PredictionRepository:
         row = self.db.execute(stmt, {"request_id": str(request_id)}).mappings().first()
         return dict(row) if row else None
 
-    def list_predictions(self, session_id: UUID, limit: int) -> list[dict]:
-        stmt = text(
-            """
+    def list_predictions(self, limit: int, patient_email: str | None = None) -> list[dict]:
+        query = """
             SELECT
                 pr.id AS request_id,
+                pr.submitted_by,
+                pr.patient_email,
+                pr.actor_role,
                 res.risk_probability,
                 res.risk_band,
                 res.predicted_label,
@@ -145,10 +155,24 @@ class PredictionRepository:
                 res.created_at
             FROM prediction_requests pr
             JOIN prediction_results res ON pr.id = res.request_id
-            WHERE pr.session_id = :session_id
-            ORDER BY res.created_at DESC
-            LIMIT :limit
+        """
+        params: dict[str, object] = {"limit": limit}
+        if patient_email is not None:
+            query += " WHERE pr.patient_email = :patient_email"
+            params["patient_email"] = patient_email
+        query += " ORDER BY res.created_at DESC LIMIT :limit"
+        stmt = text(query)
+        rows = self.db.execute(stmt, params).mappings().all()
+        return [dict(row) for row in rows]
+
+    def delete_prediction_request(self, request_id: UUID | str) -> dict | None:
+        stmt = text(
+            """
+            DELETE FROM prediction_requests
+            WHERE id = :request_id
+            RETURNING id, patient_email, submitted_by, actor_role, created_at
             """
         )
-        rows = self.db.execute(stmt, {"session_id": str(session_id), "limit": limit}).mappings().all()
-        return [dict(row) for row in rows]
+        row = self.db.execute(stmt, {"request_id": str(request_id)}).mappings().first()
+        self.db.commit()
+        return dict(row) if row else None

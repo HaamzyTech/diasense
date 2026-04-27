@@ -302,6 +302,20 @@ def choose_best_evaluation(results: list[dict[str, Any]], primary_metric: str) -
     ranked = sorted(results, key=lambda item: metric_value(item["test_metrics"], primary_metric), reverse=True)
     return ranked[0]
 
+
+def choose_best_serving_candidate(
+    results: list[dict[str, Any]],
+    primary_metric: str,
+) -> dict[str, Any]:
+    eligible_results = [
+        result for result in results if bool(result.get("thresholds", {}).get("passed"))
+    ]
+    if not eligible_results:
+        raise RuntimeError(
+            "No evaluated model passed the serving thresholds; refusing to select a model for serving."
+        )
+    return choose_best_evaluation(eligible_results, primary_metric)
+
 def log_dataset_inputs(mlflow, from_pandas, run_df: pd.DataFrame, name: str) -> None:
     try:
         dataset = from_pandas(run_df, source=name)
@@ -459,7 +473,7 @@ def main():
                     }
                 )
 
-        best_result = choose_best_evaluation(all_results, primary_metric)
+        best_result = choose_best_serving_candidate(all_results, primary_metric)
         evaluator_cfg = ev_params.get("mlflow_evaluator", {})
         if evaluator_cfg.get("enabled", False):
             best_model_artifact_dir = Path(best_result["artifact_dir"])

@@ -270,7 +270,24 @@ def choose_best_model(results: list[dict[str, Any]], primary_metric: str) -> dic
         key=lambda item: metric_value(item["val_metrics"], primary_metric),
         reverse=True,
     )
+    print(ranked)
     return ranked[0]
+
+
+def maybe_register_best_model(
+    mlflow,
+    best_result: dict[str, Any],
+    registered_model_name: str | None,
+    register_best_after_training: bool,
+) -> tuple[str | None, str | None]:
+    if not registered_model_name or not register_best_after_training:
+        return None, None
+
+    result = mlflow.register_model(best_result["model_uri"], str(registered_model_name))
+    mlflow.set_tag("registered_model_name", str(registered_model_name))
+    registered_version = str(getattr(result, "version", ""))
+    mlflow.set_tag("registered_model_version", registered_version)
+    return str(registered_model_name), registered_version
 
 
 def main():
@@ -500,11 +517,17 @@ def main():
             mlflow.log_metric(f"best_val_{metric_name}", metric_value_item)
 
         registered_model_name = mlflow_params.get("registered_model_name")
-        if registered_model_name:
+        register_best_after_training = bool(
+            mlflow_params.get("register_best_after_training", False)
+        )
+        if registered_model_name and register_best_after_training:
             try:
-                result = mlflow.register_model(best_result["model_uri"], str(registered_model_name))
-                mlflow.set_tag("registered_model_name", str(registered_model_name))
-                mlflow.set_tag("registered_model_version", str(getattr(result, "version", "")))
+                maybe_register_best_model(
+                    mlflow=mlflow,
+                    best_result=best_result,
+                    registered_model_name=str(registered_model_name),
+                    register_best_after_training=register_best_after_training,
+                )
             except Exception:
                 pass
         

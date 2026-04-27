@@ -157,7 +157,7 @@ preprocess:
       - age
 
 train:
-  primary_metric: roc_auc
+  primary_metric: val_f1
   enabled_models: 
     - logistic_regression
     - random_forest
@@ -193,6 +193,7 @@ mlflow:
   train_run_name: train_three_models_v1
   eval_run_name: evaluate-three-models-v1
   registered_model_name: diasense-diabetes-risk
+  register_best_after_training: false
   serving_model_stage: Production
   archive_existing_versions: true
 

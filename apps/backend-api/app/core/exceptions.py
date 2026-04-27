@@ -34,6 +34,11 @@ class AuthenticationError(AppError):
         super().__init__(message=message, status_code=status.HTTP_401_UNAUTHORIZED, code="authentication_error")
 
 
+class AuthorizationError(AppError):
+    def __init__(self, message: str = "You do not have permission to perform this action") -> None:
+        super().__init__(message=message, status_code=status.HTTP_403_FORBIDDEN, code="authorization_error")
+
+
 class ConflictError(AppError):
     def __init__(self, message: str) -> None:
         super().__init__(message=message, status_code=status.HTTP_409_CONFLICT, code="conflict_error")

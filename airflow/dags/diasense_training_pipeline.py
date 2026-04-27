@@ -87,10 +87,11 @@ with DAG(
         python_callable=register_serving_model,
     )
 
-    record_pipeline_run = PythonOperator(
-        task_id="record_pipeline_run_success_or_failure",
-        python_callable=record_pipeline_run_success_or_failure,
-        trigger_rule=TriggerRule.ALL_DONE,
-    )
+    # record_pipeline_run = PythonOperator(
+    #     task_id="record_pipeline_run_success_or_failure",
+    #     python_callable=record_pipeline_run_success_or_failure,
+    #     trigger_rule=TriggerRule.ALL_DONE,
+    # )
 
-    ingest >> validate >> preprocess >> train >> evaluate >> register >> record_pipeline_run
+    ingest >> validate >> preprocess >> train >> evaluate >> register 
+    # >> record_pipeline_run

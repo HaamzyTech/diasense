@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import numpy as np
 import pandas as pd
@@ -178,6 +179,23 @@ def pipeline_db_connect():
     )
 
 
+def airflow_metadata_db_connect():
+    airflow_db_uri = (
+        os.getenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "").strip()
+        or os.getenv("AIRFLOW__CORE__SQL_ALCHEMY_CONN", "").strip()
+    )
+    if airflow_db_uri:
+        normalized_uri = airflow_db_uri.replace(
+            "postgresql+psycopg2://",
+            "postgresql://",
+            1,
+        )
+        parts = urlsplit(normalized_uri)
+        return psycopg2.connect(urlunsplit(parts))
+
+    return pipeline_db_connect()
+
+
 @contextmanager
 def pipeline_db_cursor():
     conn = pipeline_db_connect()
@@ -244,18 +262,19 @@ def infer_pipeline_status(context: dict[str, Any], final_task_id: str) -> str:
     dag_id = context["dag"].dag_id
     run_id = context["run_id"]
 
-    with pipeline_db_cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT task_id, state
-            FROM task_instance
-            WHERE dag_id = %s
-              AND run_id = %s
-              AND task_id <> %s
-            """,
-            (dag_id, run_id, final_task_id),
-        )
-        upstream_states = [state for _, state in cursor.fetchall()]
+    with airflow_metadata_db_connect() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT task_id, state
+                FROM task_instance
+                WHERE dag_id = %s
+                  AND run_id = %s
+                  AND task_id <> %s
+                """,
+                (dag_id, run_id, final_task_id),
+            )
+            upstream_states = [str(state) for _, state in cursor.fetchall()]
 
     if any(state in PIPELINE_FAILURE_STATES for state in upstream_states):
         return "failed"

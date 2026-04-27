@@ -3,6 +3,7 @@ from app.schemas.base import APIModel
 
 class AuthUser(APIModel):
     username: str
+    email: str | None = None
     role: str
     auth_source: str
 
@@ -13,7 +14,8 @@ class LoginRequest(APIModel):
 
 
 class SignupRequest(APIModel):
-    email: str
+    username: str | None = None
+    email: str | None = None
     password: str
 
 

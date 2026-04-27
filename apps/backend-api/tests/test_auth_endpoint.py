@@ -8,7 +8,8 @@ from app.main import app
 
 
 class DummyAuthService:
-    def signup(self, email: str, password: str) -> dict:
+    def signup(self, username: str | None, email: str | None, password: str) -> dict:
+        assert username == "user123"
         assert email == "user@example.com"
         assert password == "securepass"
         return {
@@ -16,7 +17,8 @@ class DummyAuthService:
             "token_type": "bearer",
             "expires_in": 43200,
             "user": {
-                "username": "user@example.com",
+                "username": "user123",
+                "email": "user@example.com",
                 "role": "patient",
                 "auth_source": "database",
             },
@@ -37,10 +39,14 @@ async def test_signup_endpoint(monkeypatch) -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.post(
             "/api/v1/signup",
-            json={"email": "user@example.com", "password": "securepass"},
+            json={
+                "username": "user123",
+                "email": "user@example.com",
+                "password": "securepass",
+            },
         )
 
     assert response.status_code == 201
     body = response.json()
     assert body["access_token"] == "signed-token"
-    assert body["user"]["username"] == "user@example.com"
+    assert body["user"]["username"] == "user123"
