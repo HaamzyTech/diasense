@@ -1,0 +1,121 @@
+flowchart LR
+    subgraph client[Browser]
+        clinicUser[Clinic User]
+    end
+
+    subgraph frontend[apps/frontend]
+        loginUI[/Login + Signup/]
+        assessmentUI[/Assessment Form/]
+        predictionsUI[/Predictions + Details/]
+        adminUI[/Patients + Users + Monitor/]
+        serverActions[Next.js Server Actions]
+        sessionCookie[(diasense_access_token)]
+    end
+
+    subgraph backend[apps/backend-api]
+        authEP[Auth Endpoints]
+        predictEP[Predict Endpoints]
+        userEP[Users + Patients Endpoints]
+        opsEP[Health + Ops + Drift + Pipeline Endpoints]
+        authSvc[AuthService]
+        predSvc[PredictionService]
+        userSvc[UserService]
+        driftSvc[DriftService]
+        pipelineSvc[PipelineService]
+        modelClient[ModelServerClient]
+    end
+
+    subgraph db[PostgreSQL]
+        authUsers[(auth_users)]
+        modelVersions[(model_versions)]
+        predictionRequests[(prediction_requests)]
+        predictionResults[(prediction_results)]
+        feedbackLabels[(feedback_labels)]
+        driftReports[(drift_reports)]
+        pipelineRuns[(pipeline_runs)]
+        systemEvents[(system_events)]
+    end
+
+    subgraph serving[Model Serving]
+        modelPing[/GET /ping/]
+        modelInvoke[/POST /invocations/]
+        productionModel[(MLflow Production Model)]
+    end
+
+    subgraph mlops[ML + Orchestration]
+        dvcIngest[ingest]
+        dvcValidate[validate]
+        dvcPreprocess[preprocess]
+        trainTask[train.py]
+        evalTask[evaluate.py]
+        registerTask[register]
+        monitorStats[recompute_current_feature_stats]
+        monitorCompare[compare_against_baseline]
+        monitorPersist[persist_drift_report]
+        monitorEmit[emit_alert_metrics]
+        mlflow[(MLflow Tracking + Registry)]
+        minio[(MinIO)]
+    end
+
+    subgraph obs[Observability]
+        metricsEP[/GET /metrics/]
+        prometheus[Prometheus]
+        grafana[Grafana]
+        alertmanager[Alertmanager]
+    end
+
+    clinicUser --> loginUI
+    clinicUser --> assessmentUI
+    clinicUser --> predictionsUI
+    clinicUser --> adminUI
+
+    loginUI --> serverActions
+    assessmentUI --> serverActions
+    predictionsUI --> serverActions
+    adminUI --> serverActions
+    serverActions <--> sessionCookie
+
+    serverActions --> authEP
+    serverActions --> predictEP
+    serverActions --> userEP
+    serverActions --> opsEP
+
+    authEP --> authSvc
+    predictEP --> predSvc
+    userEP --> userSvc
+    opsEP --> driftSvc
+    opsEP --> pipelineSvc
+
+    authSvc --> authUsers
+    predSvc --> predictionRequests
+    predSvc --> predictionResults
+    predSvc --> modelVersions
+    predSvc --> systemEvents
+    predSvc --> modelClient
+    userSvc --> authUsers
+    userSvc --> predictionRequests
+    userSvc --> predictionResults
+    driftSvc --> driftReports
+    pipelineSvc --> pipelineRuns
+
+    modelClient --> modelPing
+    modelClient --> modelInvoke
+    modelPing --> productionModel
+    modelInvoke --> productionModel
+    productionModel --> mlflow
+    mlflow --> minio
+
+    dvcIngest --> dvcValidate --> dvcPreprocess --> trainTask --> evalTask --> registerTask
+    monitorStats --> monitorCompare --> monitorPersist --> monitorEmit
+
+    trainTask --> mlflow
+    evalTask --> mlflow
+    registerTask --> modelVersions
+    registerTask --> pipelineRuns
+    monitorPersist --> driftReports
+    monitorEmit --> systemEvents
+    monitorEmit --> pipelineRuns
+
+    backend --> metricsEP
+    metricsEP --> prometheus --> grafana
+    prometheus --> alertmanager

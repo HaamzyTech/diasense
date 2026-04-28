@@ -1,0 +1,52 @@
+flowchart TB
+    user[Patient / Clinician / Admin]
+
+    subgraph ui[Frontend Layer]
+        frontend[Next.js Frontend]
+    end
+
+    subgraph api[Application Layer]
+        backend[FastAPI Backend API]
+        metrics[/Prometheus /metrics/]
+    end
+
+    subgraph inference[Inference Layer]
+        modelserver[MLflow Model-Server]
+    end
+
+    subgraph data[State And Artifact Layer]
+        postgres[(PostgreSQL)]
+        mlflow[(MLflow Tracking + Registry)]
+        minio[(MinIO Artifact + DVC Remote)]
+    end
+
+    subgraph orchestration[Pipeline Layer]
+        airflow[Airflow]
+        mlworker[ML + DVC Worker]
+    end
+
+    subgraph observability[Observability Layer]
+        prometheus[Prometheus]
+        grafana[Grafana]
+        alertmanager[Alertmanager]
+    end
+
+    user --> frontend
+    frontend --> backend
+    backend --> modelserver
+    backend --> postgres
+    backend --> mlflow
+    modelserver --> mlflow
+    mlflow --> minio
+
+    airflow --> mlworker
+    airflow --> postgres
+    airflow --> mlflow
+    airflow --> minio
+    mlworker --> mlflow
+    mlworker --> minio
+
+    prometheus --> metrics
+    metrics --> backend
+    prometheus --> grafana
+    prometheus --> alertmanager
