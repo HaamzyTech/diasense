@@ -34,6 +34,7 @@ class DummyModelRepo:
             "id": "33333333-3333-3333-3333-333333333333",
             "model_name": "diasense-diabetes-risk",
             "model_version": "7",
+            "mlflow_model_uri": "models:/diasense-diabetes-risk/7",
         }
 
 
@@ -196,7 +197,7 @@ def test_prediction_service_falls_back_to_registered_model_probability() -> None
     assert result["predicted_label"] is True
     assert result["risk_probability"] == 0.7345
     assert model_client.last_probability_request == (
-        "33333333-3333-3333-3333-333333333333",
+        "models:/diasense-diabetes-risk/7",
         [
             {
                 "pregnancies": 1,

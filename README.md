@@ -44,32 +44,6 @@ Host tools:
 - `docker`
 - `docker compose`
 
-Repo-pinned runtime versions used by containers and lockfiles:
-
-- Frontend build image: `node:24-alpine`
-- Frontend runtime image: `node:22-alpine`
-- Frontend framework: `next@16.1.7`
-- Frontend React runtime: `react@19.2.5`, `react-dom@19.2.5`
-- Frontend TypeScript: `typescript@5.9.3`
-- Frontend package manager format: `pnpm-lock.yaml` lockfile version `9.0`
-- Backend base image: `python:3.12-alpine`
-- Backend API: `fastapi==0.136.1`
-- Backend server: `uvicorn[standard]==0.46.0`
-- Backend ORM: `sqlalchemy==2.0.49`
-- Backend migrations: `alembic==1.18.4`
-- Backend HTTP client: `httpx==0.28.1`
-- Backend telemetry: `prometheus-client==0.25.0`
-- Backend MLflow client: `mlflow==3.11.1`
-- ML worker image: `python:3.12-slim`
-- Airflow image: `apache/airflow:3.2.0-python3.12`
-- PostgreSQL image: `postgres:17-alpine`
-- Model-server image base: `python:3.12-alpine`
-- Model-server package: `mlflow==3.11.1`
-
-Version note:
-
-- `docker-compose.yml` currently pins most images exactly, but the `mlflow-tracking`, `prometheus`, `alertmanager`, and `grafana` services still use `latest` tags. The ML code and model-server image are pinned to `mlflow==3.11.1`.
-
 ## 5. Clone And Configure
 
 If you already have the repository locally, start at step 3.

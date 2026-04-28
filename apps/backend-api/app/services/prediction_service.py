@@ -1,4 +1,5 @@
 from time import perf_counter
+from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from app.clients.model_server import ModelServerClient
@@ -103,7 +104,7 @@ class PredictionService:
             )
             raise
 
-        first_result = model_output[0] if model_output else {}
+        first_result = self._normalize_inference_result(model_output[0] if model_output else {})
         probability = self._resolve_probability(
             payload=first_result,
             active_model=active_model,
@@ -257,6 +258,20 @@ class PredictionService:
         if not 0 <= probability_value <= 1:
             raise ValidationError("Model probability inference returned out-of-range probability")
         return probability_value
+
+    def _normalize_inference_result(self, payload: Any) -> dict[str, Any]:
+        if isinstance(payload, dict):
+            return payload
+
+        try:
+            numeric_value = float(payload)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("Model-server returned an invalid prediction payload") from exc
+
+        if numeric_value in {0.0, 1.0}:
+            return {"predicted_label": bool(int(numeric_value))}
+
+        return {"risk_probability": numeric_value}
 
     def _extract_probability(self, payload: dict) -> float:
         probability = payload.get("risk_probability", payload.get("probability"))
