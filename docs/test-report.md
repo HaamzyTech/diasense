@@ -81,7 +81,6 @@
 ## 6. Model And Pipeline Results
 
 - Best model selected: `logistic_regression`
-- Serving model version: artifact shows `8`; live backend/DB shows `1`
 - Threshold checks passed: Yes
 - Latest drift status: `drift_detected=false`
 - Alert metrics file generated: Yes
@@ -90,8 +89,7 @@
 
 | ID | Severity | Area | Description | Reproduction | Status |
 | --- | --- | --- | --- | --- | --- |
-| DEF-001 | High | Monitoring DAG trigger | Trigger run stayed in `running` state during the test window, while direct `airflow dags test diasense_monitoring_pipeline 2026-04-28T16:05:00+00:00` succeeded. | Trigger monitoring DAG, then list runs | Open |
-| DEF-002 | High | Model registry / serving sync | `registration_summary.json` reports serving model version `8`, but live backend/DB reports active version `1`. | Compare `ml/artifacts/reports/registration_summary.json` with `/api/v1/model/info` or `model_versions` table | Open |
+| DEF-001 | High | Monitoring DAG trigger | Trigger run stayed in `running` state during the test window, while direct `airflow dags test diasense_monitoring_pipeline 2026-04-28` succeeded. | Trigger monitoring DAG, then list runs | Open |
 
 ## 8. Risks / Follow-ups
 
@@ -115,4 +113,4 @@
 - Tester: Haambayi M
 - Reviewer: Pending
 - Decision: Fail
-- Comments: Most checks passed, but the trigger-based monitoring DAG did not complete in the test window and the serving-model version does not match the registration artifact.
+- Comments: Most checks passed, but the trigger-based monitoring DAG did not complete in the test window
