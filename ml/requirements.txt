@@ -2,6 +2,7 @@ dvc[s3]
 joblib
 mlflow==3.11.1
 pandas
+psycopg2-binary==2.9.10
 requests
 scikit-learn
 pyyaml

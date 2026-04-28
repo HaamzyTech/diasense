@@ -184,7 +184,7 @@ def airflow_metadata_db_connect():
         os.getenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "").strip()
         or os.getenv("AIRFLOW__CORE__SQL_ALCHEMY_CONN", "").strip()
     )
-    if airflow_db_uri:
+    if airflow_db_uri and airflow_db_uri.startswith("postgresql"):
         normalized_uri = airflow_db_uri.replace(
             "postgresql+psycopg2://",
             "postgresql://",
@@ -193,7 +193,13 @@ def airflow_metadata_db_connect():
         parts = urlsplit(normalized_uri)
         return psycopg2.connect(urlunsplit(parts))
 
-    return pipeline_db_connect()
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgres"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        dbname=os.getenv("AIRFLOW_POSTGRES_DB", "airflow"),
+        user=os.getenv("POSTGRES_USER", "diasense"),
+        password=os.getenv("POSTGRES_PASSWORD", "diasense"),
+    )
 
 
 @contextmanager
@@ -322,13 +328,29 @@ def finalize_pipeline_run(
 
 
 def resolve_training_mlflow_run_id(params: dict[str, Any]) -> str | None:
-    evaluation_path = reports_dir(params) / params["files"]["evaluation_summary"]
-    if evaluation_path.exists():
-        summary = load_json(evaluation_path)
+    registration_path = reports_dir(params) / params["files"].get(
+        "registration_summary",
+        "registration_summary.json",
+    )
+    if registration_path.exists():
+        summary = load_json(registration_path)
         serving = summary.get("serving_model", {})
         return (
             serving.get("source_run_id")
             or serving.get("evaluation_run_id")
+            or summary.get("parent_run_id")
+        )
+
+    evaluation_path = reports_dir(params) / params["files"]["evaluation_summary"]
+    if evaluation_path.exists():
+        summary = load_json(evaluation_path)
+        serving = summary.get("serving_model", {})
+        candidate = summary.get("serving_candidate", {})
+        return (
+            serving.get("source_run_id")
+            or serving.get("evaluation_run_id")
+            or candidate.get("source_run_id")
+            or candidate.get("evaluation_run_id")
             or summary.get("parent_run_id")
         )
 
@@ -338,121 +360,6 @@ def resolve_training_mlflow_run_id(params: dict[str, Any]) -> str | None:
         return summary.get("best_run_id") or summary.get("parent_run_id")
 
     return None
-
-
-def update_model_registry_record(params: dict[str, Any]) -> dict[str, Any]:
-    evaluation_path = reports_dir(params) / params["files"]["evaluation_summary"]
-    if not evaluation_path.exists():
-        raise FileNotFoundError(
-            f"Evaluation summary not found at {evaluation_path}."
-        )
-
-    evaluation_summary = load_json(evaluation_path)
-    serving_model = evaluation_summary.get("serving_model", {})
-    registered_model_name = str(
-        serving_model.get(
-            "registered_model_name",
-            params.get("mlflow", {}).get("registered_model_name", "diasense-diabetes-risk"),
-        )
-    )
-    registered_model_version = str(serving_model["registered_model_version"])
-    algorithm = str(evaluation_summary.get("best_model_name", "unknown"))
-    model_uri = str(
-        evaluation_summary.get(
-            "best_model_uri",
-            f"models:/{registered_model_name}/{serving_model.get('serving_model_stage', 'Production')}",
-        )
-    )
-    metrics_payload: dict[str, Any] = {}
-    for result in evaluation_summary.get("results", []):
-        if str(result.get("model_name")) == algorithm:
-            metrics_payload = result.get("test_metrics", {})
-            break
-
-    params_payload = (
-        params.get("train", {})
-        .get("models", {})
-        .get(algorithm, {})
-    )
-
-    with pipeline_db_cursor() as cursor:
-        cursor.execute(
-            "UPDATE model_versions SET is_active = FALSE WHERE model_name = %s",
-            (registered_model_name,),
-        )
-        cursor.execute(
-            """
-            SELECT id
-            FROM model_versions
-            WHERE model_name = %s AND model_version = %s
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (registered_model_name, registered_model_version),
-        )
-        existing = cursor.fetchone()
-
-        if existing:
-            cursor.execute(
-                """
-                UPDATE model_versions
-                SET
-                    mlflow_run_id = %s,
-                    mlflow_model_uri = %s,
-                    algorithm = %s,
-                    metrics = %s,
-                    params = %s,
-                    stage = %s,
-                    is_active = TRUE
-                WHERE id = %s
-                """,
-                (
-                    serving_model.get("source_run_id"),
-                    model_uri,
-                    algorithm,
-                    Json(metrics_payload),
-                    Json(params_payload),
-                    str(serving_model.get("serving_model_stage", "Production")).lower(),
-                    existing[0],
-                ),
-            )
-        else:
-            cursor.execute(
-                """
-                INSERT INTO model_versions
-                    (
-                        model_name,
-                        model_version,
-                        mlflow_run_id,
-                        mlflow_model_uri,
-                        algorithm,
-                        metrics,
-                        params,
-                        stage,
-                        is_active
-                    )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-                """,
-                (
-                    registered_model_name,
-                    registered_model_version,
-                    serving_model.get("source_run_id"),
-                    model_uri,
-                    algorithm,
-                    Json(metrics_payload),
-                    Json(params_payload),
-                    str(serving_model.get("serving_model_stage", "Production")).lower(),
-                ),
-            )
-
-    return {
-        "registered_model_name": registered_model_name,
-        "registered_model_version": registered_model_version,
-        "algorithm": algorithm,
-        "mlflow_run_id": serving_model.get("source_run_id"),
-        "mlflow_model_uri": model_uri,
-    }
-
 
 def numeric_feature_columns(params: dict[str, Any]) -> list[str]:
     return list(params.get("schema", {}).get("feature_cols", []))

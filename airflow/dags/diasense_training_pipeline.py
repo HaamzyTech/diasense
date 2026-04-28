@@ -16,8 +16,6 @@ from _diasense_common import (
     load_params,
     resolve_training_mlflow_run_id,
     run_dvc_stage,
-    run_ml_script,
-    update_model_registry_record,
 )
 
 
@@ -27,17 +25,6 @@ PIPELINE_NAME = "diasense_training_pipeline"
 def run_dvc_pipeline_stage(stage_name: str, **context) -> None:
     ensure_pipeline_run_record(context, PIPELINE_NAME)
     run_dvc_stage(stage_name)
-
-
-def run_script_stage(script_name: str, **context) -> None:
-    ensure_pipeline_run_record(context, PIPELINE_NAME)
-    run_ml_script(script_name)
-
-
-def register_serving_model(**context) -> None:
-    ensure_pipeline_run_record(context, PIPELINE_NAME)
-    params = load_params()
-    update_model_registry_record(params)
 
 
 def record_pipeline_run_success_or_failure(**context) -> None:
@@ -74,24 +61,24 @@ with DAG(
     )
     train = PythonOperator(
         task_id="train",
-        python_callable=run_script_stage,
-        op_kwargs={"script_name": "train.py"},
+        python_callable=run_dvc_pipeline_stage,
+        op_kwargs={"stage_name": "train"},
     )
     evaluate = PythonOperator(
         task_id="evaluate",
-        python_callable=run_script_stage,
-        op_kwargs={"script_name": "evaluate.py"},
+        python_callable=run_dvc_pipeline_stage,
+        op_kwargs={"stage_name": "evaluate"},
     )
     register = PythonOperator(
         task_id="register",
-        python_callable=register_serving_model,
+        python_callable=run_dvc_pipeline_stage,
+        op_kwargs={"stage_name": "register"},
     )
 
-    # record_pipeline_run = PythonOperator(
-    #     task_id="record_pipeline_run_success_or_failure",
-    #     python_callable=record_pipeline_run_success_or_failure,
-    #     trigger_rule=TriggerRule.ALL_DONE,
-    # )
+    record_pipeline_run = PythonOperator(
+        task_id="record_pipeline_run_success_or_failure",
+        python_callable=record_pipeline_run_success_or_failure,
+        trigger_rule=TriggerRule.ALL_DONE,
+    )
 
-    ingest >> validate >> preprocess >> train >> evaluate >> register 
-    # >> record_pipeline_run
+    ingest >> validate >> preprocess >> train >> evaluate >> register >> record_pipeline_run

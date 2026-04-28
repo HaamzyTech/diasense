@@ -28,6 +28,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 from config import ROOT
+from utils.metrics import metric_optional_value
 from utils.runtime import resolve_experiment_name, resolve_tracking_uri
 from utils.io import ensure_dirs, load_dataframe, parse_args, read_params, save_json, save_model
 
@@ -167,7 +168,7 @@ def build_pipeline(
 
 
 def metric_value(metrics: dict[str, float], metric_name: str) -> float:
-    value = metrics.get(metric_name)
+    value = metric_optional_value(metrics, metric_name)
     if value is None:
         return float("-inf")
     return float(value)

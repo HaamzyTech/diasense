@@ -19,7 +19,7 @@ The final runtime is split into these layers:
 - `apps/frontend`: Next.js 16 clinic and marketing UI
 - `apps/backend-api`: FastAPI 0.136.1 API, auth, prediction orchestration, ops endpoints, and metrics
 - `model-server`: MLflow `models serve` process for `models:/diasense-diabetes-risk/Production`
-- `ml`: DVC and ML scripts for ingest, validate, preprocess, train, and evaluate
+- `ml`: DVC and ML scripts for ingest, validate, preprocess, train, evaluate, and register
 - `airflow`: orchestration for `diasense_training_pipeline` and `diasense_monitoring_pipeline`
 - observability: Prometheus, Alertmanager, and Grafana
 - state and artifacts: PostgreSQL, MLflow tracking, and MinIO-backed artifact/DVC storage
@@ -130,6 +130,11 @@ That reproduces these DVC stages from `ml/dvc.yaml`:
 - `ingest`
 - `validate`
 - `preprocess`
+- `train`
+- `evaluate`
+- `register`
+
+The final `register` stage reads `evaluation_summary.json`, registers or reuses the selected candidate in MLflow, promotes it to `Production`, updates the backend-facing `model_versions` row, and writes `registration_summary.json`.
 
 ### 6.5 Trigger The Airflow Training DAG
 
@@ -149,7 +154,7 @@ The training DAG executes:
 
 ### 6.6 Restart The Model-Server After Registration
 
-The model-server serves `models:/diasense-diabetes-risk/Production` at process start. After a new Production version is registered, restart it so it resolves the latest promoted version:
+The model-server serves `models:/diasense-diabetes-risk/Production` at process start. After either the DVC pipeline or the Airflow training DAG registers a new Production version, restart it so it resolves the latest promoted version:
 
 ```bash
 docker compose restart model-server
@@ -204,6 +209,9 @@ If you want stage-by-stage execution:
 docker compose exec ml bash -lc "cd /workspace/ml && dvc pull && dvc repro ingest"
 docker compose exec ml bash -lc "cd /workspace/ml && dvc repro validate"
 docker compose exec ml bash -lc "cd /workspace/ml && dvc repro preprocess"
+docker compose exec ml bash -lc "cd /workspace/ml && dvc repro train"
+docker compose exec ml bash -lc "cd /workspace/ml && dvc repro evaluate"
+docker compose exec ml bash -lc "cd /workspace/ml && dvc repro register"
 ```
 
 ## 9. Exact Commands To Trigger Airflow DAGs
@@ -227,6 +235,42 @@ Optional task-level logs:
 ```bash
 docker compose logs --tail=200 airflow
 ```
+
+### 9.1 Automated Unit Tests
+
+Backend tests:
+
+```bash
+docker compose exec backend-api python -m pytest -q
+```
+
+ML tests:
+
+```bash
+docker compose exec ml bash -lc "python -m pip install pytest && cd /workspace/ml && python -m pytest -q tests"
+```
+
+### 9.2 Pipeline Smoke Tests
+
+DVC full training pipeline:
+
+```bash
+docker compose exec ml bash -lc "cd /workspace/ml && dvc repro"
+```
+
+Airflow training DAG:
+
+```bash
+docker compose exec airflow airflow dags test diasense_training_pipeline 2026-04-28T08:50:00+00:00
+```
+
+Airflow monitoring DAG:
+
+```bash
+docker compose exec airflow airflow dags test diasense_monitoring_pipeline 2026-04-28T00:00:00+00:00
+```
+
+Use a fresh logical timestamp each time you rerun `airflow dags test`; Airflow reuses task-instance metadata for identical logical dates.
 
 ## 10. Access The Running Services
 
@@ -257,13 +301,13 @@ Default credentials from `.env.example`:
 
 Current repository example from the inspected workspace:
 
-- Git commit hash: `4aa9e112dde2849fc4e9edbeec7b1ba63025b1f0`
-- DVC revision recorded by the pipelines: `4aa9e112dde2849fc4e9edbeec7b1ba63025b1f0`
-- Training parent MLflow run ID: `11264a7bddb848d59813160a5f7e10e6`
-- Best model source run ID: `375d7924a94f4fe39a4b26037d74bcd3`
-- Evaluation parent run ID: `8fac391629c64ef0b5a48aa0a9c9a3ed`
-- Serving evaluation run ID for the selected model: `efc0267d98434f68a0e041edef7c48c5`
-- Serving registered model version in `evaluation_summary.json`: `6`
+- Git commit hash: `6aeb7966d4b18a905da4dca4c983f55e4473c3bc`
+- DVC revision recorded by the pipelines: `6aeb7966d4b18a905da4dca4c983f55e4473c3bc`
+- Training parent MLflow run ID: `90733b1515b8408895e28f0eb7629010`
+- Best model source run ID: `f58209d613c544b38b8441a9411b404b`
+- Evaluation parent run ID: `c9a4b75b5df243dbaf8292974f035ee9`
+- Serving evaluation run ID for the selected model: `dc95dec72661419babfedb47d2f68d99`
+- Serving registered model version in `registration_summary.json`: `8`
 
 Exact reproduction flow:
 
@@ -281,7 +325,7 @@ How the identifiers relate:
 
 - `git_commit_hash` is stored in `pipeline_runs.git_commit_hash`
 - `dvc_rev` is the same Git revision because `airflow/dags/_diasense_common.py` derives `dvc_revision()` from `git rev-parse HEAD`
-- MLflow run IDs are written into `ml/artifacts/reports/train_summary.json` and `ml/artifacts/reports/evaluation_summary.json`
+- MLflow run IDs are written into `ml/artifacts/reports/train_summary.json`, `ml/artifacts/reports/evaluation_summary.json`, and `ml/artifacts/reports/registration_summary.json`
 
 ## 12. Troubleshooting
 
@@ -297,9 +341,10 @@ docker compose logs --tail=200 frontend-ui
 
 ### Monitor page shows no active model or predictions fail with no model being served
 
-Run the training DAG, then restart the model-server:
+Run either the DVC pipeline or the training DAG, then restart the model-server:
 
 ```bash
+docker compose exec ml bash -lc "cd /workspace/ml && dvc repro"
 docker compose exec airflow airflow dags trigger diasense_training_pipeline
 docker compose restart model-server
 docker compose logs --tail=200 model-server
@@ -307,7 +352,7 @@ docker compose logs --tail=200 model-server
 
 ### Backend returns `No active model available for inference`
 
-The `model_versions` table does not yet have an active row. Trigger the training DAG so the `register` task updates the registry record.
+The `model_versions` table does not yet have an active row. Run `docker compose exec ml bash -lc "cd /workspace/ml && dvc repro"` or trigger the training DAG so the `register` stage updates the registry record.
 
 ### Airflow UI is up but the DAG is missing
 

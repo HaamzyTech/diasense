@@ -80,3 +80,111 @@ stages:
       - data/features/val.csv
       - data/features/test.csv
       - artifacts/reports/preprocessing_artifact.json
+
+  train:
+    cmd: python src/train.py --config params.yaml
+    deps:
+      - src/config.py
+      - src/train.py
+      - src/utils/io.py
+      - src/utils/metrics.py
+      - src/utils/runtime.py
+      - data/features/train.csv
+      - data/features/val.csv
+    params:
+      - data.random_state
+      - paths.DATA_DIR
+      - paths.ARTIFACTS_DIR
+      - paths.feature_data
+      - paths.report_dir
+      - schema.lable_col
+      - schema.categorical_columns
+      - schema.drop_columns
+      - files.train_set
+      - files.val_set
+      - files.train_summary
+      - files.leaderboard
+      - files.train_metrics
+      - files.validation_metrics
+      - files.train_classification_report
+      - files.validation_classification_report
+      - files.train_predictions
+      - files.validation_predictions
+      - files.train_confusion_matrix
+      - files.validation_confusion_matrix
+      - files.validation_roc_curve
+      - files.validation_precision_recal_curve
+      - train
+      - mlflow
+    outs:
+      - artifacts/reports/train_summary.json
+      - artifacts/reports/leaderboard.json
+      - artifacts/reports/train_metrics.json
+      - artifacts/reports/validation_metrics.json
+      - artifacts/reports/train_classification_report.json
+      - artifacts/reports/validation_classification_report.json
+      - artifacts/reports/train_predictions.csv
+      - artifacts/reports/validation_predictions.csv
+      - artifacts/reports/train_confusion_matrix.png
+      - artifacts/reports/validation_confusion_matrix.png
+      - artifacts/reports/validation_roc_curve.png
+      - artifacts/reports/validation_precision_recall_curve.png
+
+  evaluate:
+    cmd: python src/evaluate.py --config params.yaml
+    deps:
+      - src/config.py
+      - src/evaluate.py
+      - src/utils/io.py
+      - src/utils/metrics.py
+      - src/utils/runtime.py
+      - data/features/test.csv
+      - artifacts/reports/train_summary.json
+    params:
+      - paths.DATA_DIR
+      - paths.ARTIFACTS_DIR
+      - paths.feature_data
+      - paths.report_dir
+      - schema.lable_col
+      - schema.drop_columns
+      - files.test_set
+      - files.train_summary
+      - files.evaluation_summary
+      - files.test_metrics
+      - files.test_classification_report
+      - files.threshold_results
+      - files.test_predictions
+      - files.test_confusion_matrix
+      - files.test_roc_curve
+      - files.test_precision_recal_curve
+      - train.primary_metric
+      - evaluate
+      - mlflow
+    outs:
+      - artifacts/reports/evaluation_summary.json
+      - artifacts/reports/test_metrics.json
+      - artifacts/reports/test_classification_report.json
+      - artifacts/reports/threshold_results.json
+      - artifacts/reports/test_predictions.csv
+      - artifacts/reports/test_confusion_matrix.png
+      - artifacts/reports/test_roc_curve.png
+      - artifacts/reports/test_precision_recall_curve.png
+
+  register:
+    cmd: python src/register.py --config params.yaml
+    deps:
+      - src/config.py
+      - src/register.py
+      - src/utils/io.py
+      - src/utils/metrics.py
+      - src/utils/runtime.py
+      - artifacts/reports/evaluation_summary.json
+    params:
+      - paths.ARTIFACTS_DIR
+      - paths.report_dir
+      - files.evaluation_summary
+      - files.registration_summary
+      - train.models
+      - mlflow
+    outs:
+      - artifacts/reports/registration_summary.json

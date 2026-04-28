@@ -221,3 +221,326 @@ stages:
       hash: md5
       md5: 7067520a0d92c49b6c171dbd32207e4d
       size: 23294
+  train:
+    cmd: python src/train.py --config params.yaml
+    deps:
+    - path: data/features/train.csv
+      hash: md5
+      md5: e92001253683baa259a91bff38014c45
+      size: 35826
+    - path: data/features/val.csv
+      hash: md5
+      md5: f3307bb9f1199abeebad5f7cf22773c3
+      size: 4599
+    - path: src/config.py
+      hash: md5
+      md5: 76da40d443d594db50f3b3f15cab1653
+      size: 68
+    - path: src/train.py
+      hash: md5
+      md5: 98136a76546cb72f121fa79c1a184c78
+      size: 21785
+    - path: src/utils/io.py
+      hash: md5
+      md5: ef170f1caf5d3672bffb54a3065ef931
+      size: 2266
+    - path: src/utils/metrics.py
+      hash: md5
+      md5: 98c2539690b610d887b8e262e128c68f
+      size: 816
+    - path: src/utils/runtime.py
+      hash: md5
+      md5: beb1932599a21beb220bdee06ec6ff65
+      size: 535
+    params:
+      params.yaml:
+        data.random_state: 42
+        files.leaderboard: leaderboard.json
+        files.train_classification_report: train_classification_report.json
+        files.train_confusion_matrix: train_confusion_matrix.png
+        files.train_metrics: train_metrics.json
+        files.train_predictions: train_predictions.csv
+        files.train_set: train.csv
+        files.train_summary: train_summary.json
+        files.val_set: val.csv
+        files.validation_classification_report: 
+          validation_classification_report.json
+        files.validation_confusion_matrix: validation_confusion_matrix.png
+        files.validation_metrics: validation_metrics.json
+        files.validation_precision_recal_curve: 
+          validation_precision_recall_curve.png
+        files.validation_predictions: validation_predictions.csv
+        files.validation_roc_curve: validation_roc_curve.png
+        mlflow:
+          tracking_uri: http://mlflow-tracking:5000
+          expreiment_name: diabetes-risk-predictor_model
+          train_run_name: train_three_models_v1
+          eval_run_name: evaluate-three-models-v1
+          registered_model_name: diasense-diabetes-risk
+          register_best_after_training: false
+          serving_model_stage: Production
+          archive_existing_versions: true
+        paths.ARTIFACTS_DIR: artifacts
+        paths.DATA_DIR: data
+        paths.feature_data: features
+        paths.report_dir: reports
+        schema.categorical_columns:
+        - bmi_group
+        - age_band
+        schema.drop_columns:
+        - split
+        schema.lable_col: outcome
+        train:
+          primary_metric: val_f1
+          enabled_models:
+          - logistic_regression
+          - random_forest
+          - xgboost
+          models:
+            logistic_regression:
+              C: 1.0
+              max_iter: 1000
+              solver: lbfgs
+              class_weight: balanced
+            random_forest:
+              n_estimators: 400
+              max_depth: 8
+              min_samples_split: 4
+              min_samples_leaf: 2
+              class_weight: balanced
+              n_jobs: -1
+            xgboost:
+              n_estimators: 400
+              max_depth: 4
+              learning_rate: 0.05
+              subsample: 0.9
+              colsample_bytree: 0.9
+              min_child_weight: 1.0
+              reg_lambda: 1.0
+              eval_metric: logloss
+              tree_method: hist
+              n_jobs: 1
+    outs:
+    - path: artifacts/reports/leaderboard.json
+      hash: md5
+      md5: d46de352d69f32d11c00c44db3906fc7
+      size: 3034
+    - path: artifacts/reports/train_classification_report.json
+      hash: md5
+      md5: 9278c2f7a07031d2b919efffff556742
+      size: 608
+    - path: artifacts/reports/train_confusion_matrix.png
+      hash: md5
+      md5: 7f909673c9b1a5c5bb804c371950843c
+      size: 18049
+    - path: artifacts/reports/train_metrics.json
+      hash: md5
+      md5: 3bfe1fb1c302145fdc6df5acf50bae6e
+      size: 283
+    - path: artifacts/reports/train_predictions.csv
+      hash: md5
+      md5: dc371d990bb32fb30102d3f6b44fdce4
+      size: 43753
+    - path: artifacts/reports/train_summary.json
+      hash: md5
+      md5: 231e980add5526df7b00019ed3922a60
+      size: 3348
+    - path: artifacts/reports/validation_classification_report.json
+      hash: md5
+      md5: 41f5a82f14509bb9a88b3bdfca073fb6
+      size: 605
+    - path: artifacts/reports/validation_confusion_matrix.png
+      hash: md5
+      md5: 9296e882d119e17f0ac8107d3b95b23e
+      size: 16634
+    - path: artifacts/reports/validation_metrics.json
+      hash: md5
+      md5: ecdd784bfa5db021506b6ef95ea7ebe6
+      size: 282
+    - path: artifacts/reports/validation_precision_recall_curve.png
+      hash: md5
+      md5: 37efbb7ce5fe21aee72cb8f68c00edc4
+      size: 21601
+    - path: artifacts/reports/validation_predictions.csv
+      hash: md5
+      md5: 7ba5b448cc08523ccb750c4044df7bd0
+      size: 5623
+    - path: artifacts/reports/validation_roc_curve.png
+      hash: md5
+      md5: eb7f495a19002738de76f08e94e7cdda
+      size: 23109
+  evaluate:
+    cmd: python src/evaluate.py --config params.yaml
+    deps:
+    - path: artifacts/reports/train_summary.json
+      hash: md5
+      md5: 231e980add5526df7b00019ed3922a60
+      size: 3348
+    - path: data/features/test.csv
+      hash: md5
+      md5: 4d2e7d3fbe34ca3f967d50a769f1b71c
+      size: 4650
+    - path: src/config.py
+      hash: md5
+      md5: 76da40d443d594db50f3b3f15cab1653
+      size: 68
+    - path: src/evaluate.py
+      hash: md5
+      md5: 94ccada2deeda1f80a4dd351d9351612
+      size: 18025
+    - path: src/utils/io.py
+      hash: md5
+      md5: ef170f1caf5d3672bffb54a3065ef931
+      size: 2266
+    - path: src/utils/metrics.py
+      hash: md5
+      md5: 98c2539690b610d887b8e262e128c68f
+      size: 816
+    - path: src/utils/runtime.py
+      hash: md5
+      md5: beb1932599a21beb220bdee06ec6ff65
+      size: 535
+    params:
+      params.yaml:
+        evaluate:
+          thresholds:
+            minimums:
+              accuracy: 0.7
+              f1: 0.6
+              roc_auc: 0.75
+            maximums:
+              log_loss: 0.7
+          mlflow_evaluator:
+            enabled: false
+            log_explainer: false
+        files.evaluation_summary: evaluation_summary.json
+        files.test_classification_report: test_classification_report.json
+        files.test_confusion_matrix: test_confusion_matrix.png
+        files.test_metrics: test_metrics.json
+        files.test_precision_recal_curve: test_precision_recall_curve.png
+        files.test_predictions: test_predictions.csv
+        files.test_roc_curve: test_roc_curve.png
+        files.test_set: test.csv
+        files.threshold_results: threshold_results.json
+        files.train_summary: train_summary.json
+        mlflow:
+          tracking_uri: http://mlflow-tracking:5000
+          expreiment_name: diabetes-risk-predictor_model
+          train_run_name: train_three_models_v1
+          eval_run_name: evaluate-three-models-v1
+          registered_model_name: diasense-diabetes-risk
+          register_best_after_training: false
+          serving_model_stage: Production
+          archive_existing_versions: true
+        paths.ARTIFACTS_DIR: artifacts
+        paths.DATA_DIR: data
+        paths.feature_data: features
+        paths.report_dir: reports
+        schema.drop_columns:
+        - split
+        schema.lable_col: outcome
+        train.primary_metric: val_f1
+    outs:
+    - path: artifacts/reports/evaluation_summary.json
+      hash: md5
+      md5: cdfc5f70a47f6bf4d22e950e66dbf8bc
+      size: 4894
+    - path: artifacts/reports/test_classification_report.json
+      hash: md5
+      md5: 9a43759c7bbb523c6e072c45941061ed
+      size: 604
+    - path: artifacts/reports/test_confusion_matrix.png
+      hash: md5
+      md5: 3fb3c4c58add1211c44d1273f6e67814
+      size: 16130
+    - path: artifacts/reports/test_metrics.json
+      hash: md5
+      md5: 1dd630531be05b280a50645f47bbc563
+      size: 269
+    - path: artifacts/reports/test_precision_recall_curve.png
+      hash: md5
+      md5: 1b8009e1a61d84bc62af1577f650e225
+      size: 19763
+    - path: artifacts/reports/test_predictions.csv
+      hash: md5
+      md5: 92e28895225d37e1c13d49c9fa69e3ba
+      size: 5668
+    - path: artifacts/reports/test_roc_curve.png
+      hash: md5
+      md5: 619a64857862e2e0da84ccf789fe428f
+      size: 22235
+    - path: artifacts/reports/threshold_results.json
+      hash: md5
+      md5: 10e13cb8c2a30cb5645c17a1bc63f209
+      size: 541
+  register:
+    cmd: python src/register.py --config params.yaml
+    deps:
+    - path: artifacts/reports/evaluation_summary.json
+      hash: md5
+      md5: cdfc5f70a47f6bf4d22e950e66dbf8bc
+      size: 4894
+    - path: src/config.py
+      hash: md5
+      md5: 76da40d443d594db50f3b3f15cab1653
+      size: 68
+    - path: src/register.py
+      hash: md5
+      md5: 6af1d86fd71940034074afddbb7efb55
+      size: 14319
+    - path: src/utils/io.py
+      hash: md5
+      md5: ef170f1caf5d3672bffb54a3065ef931
+      size: 2266
+    - path: src/utils/metrics.py
+      hash: md5
+      md5: 98c2539690b610d887b8e262e128c68f
+      size: 816
+    - path: src/utils/runtime.py
+      hash: md5
+      md5: beb1932599a21beb220bdee06ec6ff65
+      size: 535
+    params:
+      params.yaml:
+        files.evaluation_summary: evaluation_summary.json
+        files.registration_summary: registration_summary.json
+        mlflow:
+          tracking_uri: http://mlflow-tracking:5000
+          expreiment_name: diabetes-risk-predictor_model
+          train_run_name: train_three_models_v1
+          eval_run_name: evaluate-three-models-v1
+          registered_model_name: diasense-diabetes-risk
+          register_best_after_training: false
+          serving_model_stage: Production
+          archive_existing_versions: true
+        paths.ARTIFACTS_DIR: artifacts
+        paths.report_dir: reports
+        train.models:
+          logistic_regression:
+            C: 1.0
+            max_iter: 1000
+            solver: lbfgs
+            class_weight: balanced
+          random_forest:
+            n_estimators: 400
+            max_depth: 8
+            min_samples_split: 4
+            min_samples_leaf: 2
+            class_weight: balanced
+            n_jobs: -1
+          xgboost:
+            n_estimators: 400
+            max_depth: 4
+            learning_rate: 0.05
+            subsample: 0.9
+            colsample_bytree: 0.9
+            min_child_weight: 1.0
+            reg_lambda: 1.0
+            eval_metric: logloss
+            tree_method: hist
+            n_jobs: 1
+    outs:
+    - path: artifacts/reports/registration_summary.json
+      hash: md5
+      md5: cd052c6031cc66981cb285307680e889
+      size: 3305

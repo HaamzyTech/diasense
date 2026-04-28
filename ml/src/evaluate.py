@@ -1,7 +1,6 @@
 
 import json
 import os
-import time
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +24,7 @@ from sklearn.metrics import (
 
 from config import ROOT
 from utils.io import ensure_dirs, load_dataframe, parse_args, read_params, save_json
+from utils.metrics import metric_optional_value
 from utils.runtime import resolve_experiment_name, resolve_tracking_uri
 
 
@@ -33,12 +33,11 @@ def import_mlflow_dependencies():
         import mlflow
         import mlflow.sklearn
         from mlflow.models import evaluate as mlflow_evaluate
-        from mlflow.tracking import MlflowClient
     except ImportError as e:
         raise ImportError(
             "MLflow is not installed. Install it with: pip install mlflow"
         ) from e
-    return mlflow, mlflow_evaluate, MlflowClient
+    return mlflow, mlflow_evaluate
 
 def resolve_candidates(ecfg: dict[str, Any]) -> list[dict[str, Any]]:
     if ecfg.get("model_uris"):
@@ -63,113 +62,6 @@ def resolve_candidates(ecfg: dict[str, Any]) -> list[dict[str, Any]]:
         raise ValueError("Train summary does not contain any candidate models.")
     return models
 
-
-def find_existing_model_version(client, registered_model_name: str, source_run_id: str | None):
-    if not source_run_id:
-        return None
-
-    try:
-        versions = client.search_model_versions(f"name='{registered_model_name}'")
-    except Exception:
-        return None
-
-    for version in versions:
-        if str(getattr(version, "run_id", "")) == str(source_run_id):
-            return version
-    return None
-
-
-def wait_for_model_version_ready(
-    client,
-    registered_model_name: str,
-    version: str,
-    timeout_seconds: int = 120,
-):
-    deadline = time.time() + timeout_seconds
-    last_status = ""
-
-    while time.time() < deadline:
-        model_version = client.get_model_version(
-            name=registered_model_name,
-            version=version,
-        )
-        status = str(getattr(model_version, "status", ""))
-        normalized_status = status.upper()
-
-        if normalized_status.endswith("READY") or not normalized_status:
-            return model_version
-        if normalized_status.endswith("FAILED_REGISTRATION"):
-            raise RuntimeError(
-                f"Model version {registered_model_name} v{version} failed registration."
-            )
-
-        last_status = status
-        time.sleep(2)
-
-    raise TimeoutError(
-        "Timed out waiting for registered model "
-        f"{registered_model_name} v{version} to become READY. Last status: {last_status}"
-    )
-
-
-def promote_best_model_for_serving(
-    mlflow,
-    client,
-    best_result: dict[str, Any],
-    registered_model_name: str,
-    serving_stage: str,
-    archive_existing_versions: bool,
-    primary_metric: str,
-) -> dict[str, Any]:
-    existing_version = find_existing_model_version(
-        client,
-        registered_model_name,
-        best_result.get("source_run_id"),
-    )
-
-    if existing_version is None:
-        registration = mlflow.register_model(best_result["model_uri"], registered_model_name)
-        version = str(getattr(registration, "version"))
-        model_version = wait_for_model_version_ready(client, registered_model_name, version)
-    else:
-        model_version = existing_version
-        version = str(getattr(model_version, "version"))
-
-    client.transition_model_version_stage(
-        name=registered_model_name,
-        version=version,
-        stage=serving_stage,
-        archive_existing_versions=archive_existing_versions,
-    )
-    client.set_model_version_tag(
-        name=registered_model_name,
-        version=version,
-        key="selected_for_serving",
-        value="true",
-    )
-    client.set_model_version_tag(
-        name=registered_model_name,
-        version=version,
-        key="selection_metric",
-        value=primary_metric,
-    )
-    client.set_model_version_tag(
-        name=registered_model_name,
-        version=version,
-        key="evaluation_run_id",
-        value=str(best_result["evaluation_run_id"]),
-    )
-
-    return {
-        "registered_model_name": registered_model_name,
-        "registered_model_version": version,
-        "serving_model_stage": serving_stage,
-        "source_run_id": str(getattr(model_version, "run_id", "")),
-        "evaluation_run_id": str(best_result["evaluation_run_id"]),
-        "primary_metric": primary_metric,
-        "primary_metric_value": best_result["test_metrics"].get(primary_metric),
-        "thresholds_passed": bool(best_result["thresholds"]["passed"]),
-    }
 
 def make_feature_frame(df: pd.DataFrame, target_column: str, drop_columns: list[str]) -> tuple[pd.DataFrame, pd.Series]:
     drop_set = set(drop_columns + [target_column])
@@ -290,7 +182,7 @@ def check_thresholds(metrics: dict[str, float], threshold_cfg: dict[str, Any]) -
     return results
 
 def metric_value(metrics: dict[str, float], metric_name: str) -> float:
-    value = metrics.get(metric_name)
+    value = metric_optional_value(metrics, metric_name)
     if value is None:
         return float("-inf")
     return float(value)
@@ -315,6 +207,24 @@ def choose_best_serving_candidate(
             "No evaluated model passed the serving thresholds; refusing to select a model for serving."
         )
     return choose_best_evaluation(eligible_results, primary_metric)
+
+
+def build_serving_candidate(
+    best_result: dict[str, Any],
+    primary_metric: str,
+) -> dict[str, Any]:
+    return {
+        "model_name": best_result["model_name"],
+        "model_uri": best_result["model_uri"],
+        "source_run_id": best_result.get("source_run_id"),
+        "evaluation_run_id": best_result["evaluation_run_id"],
+        "primary_metric": primary_metric,
+        "primary_metric_value": metric_optional_value(
+            best_result["test_metrics"],
+            primary_metric,
+        ),
+        "thresholds_passed": bool(best_result["thresholds"]["passed"]),
+    }
 
 def log_dataset_inputs(mlflow, from_pandas, run_df: pd.DataFrame, name: str) -> None:
     try:
@@ -348,9 +258,6 @@ def main():
         mlflow_param.get("registered_model_name", "diasense-diabetes-risk")
     )
     serving_model_stage = str(mlflow_param.get("serving_model_stage", "Production"))
-    archive_existing_versions = bool(
-        mlflow_param.get("archive_existing_versions", True)
-    )
 
     candidate_paths = {
         "model_uris": ev_params.get("model_uris"),
@@ -358,7 +265,7 @@ def main():
     }
     candidates = resolve_candidates(candidate_paths)
 
-    mlflow, mlflow_evaluate, MlflowClient = import_mlflow_dependencies()
+    mlflow, mlflow_evaluate = import_mlflow_dependencies()
 
     tracking_uri = resolve_tracking_uri(mlflow_param.get("tracking_uri"))
 
@@ -367,8 +274,6 @@ def main():
 
     experiment_name = resolve_experiment_name(mlflow_param)
     mlflow.set_experiment(experiment_name)
-    client = MlflowClient()
-
     while mlflow.active_run() is not None:
         mlflow.end_run()
     os.environ.pop("MLFLOW_RUN_ID", None)
@@ -504,15 +409,7 @@ def main():
                     artifact_path=best_result["model_name"],
                 )
 
-        serving_selection = promote_best_model_for_serving(
-            mlflow=mlflow,
-            client=client,
-            best_result=best_result,
-            registered_model_name=registered_model_name,
-            serving_stage=serving_model_stage,
-            archive_existing_versions=archive_existing_versions,
-            primary_metric=primary_metric,
-        )
+        serving_candidate = build_serving_candidate(best_result, primary_metric)
         summary = {
             "parent_run_id": parent_run_id,
             "tracking_uri": tracking_uri,
@@ -520,7 +417,7 @@ def main():
             "primary_metric": primary_metric,
             "best_model_name": best_result["model_name"],
             "best_model_uri": best_result["model_uri"],
-            "serving_model": serving_selection,
+            "serving_candidate": serving_candidate,
             "results": all_results,
         }
         summary_path = ROOT / artifacts_dir / reports_dir / ev_summary
@@ -533,8 +430,8 @@ def main():
             mlflow.log_metric(f"best_test_{metric_name}", metric_value_item)
         mlflow.set_tags(
             {
+                "serving_candidate_model_name": best_result["model_name"],
                 "serving_registered_model_name": registered_model_name,
-                "serving_registered_model_version": serving_selection["registered_model_version"],
                 "serving_model_stage": serving_model_stage,
             }
         )
@@ -542,8 +439,8 @@ def main():
         print(f"[OK] Evaluated {len(all_results)} models.")
         print(f"[OK] Best test model by {primary_metric}: {best_result['model_name']}")
         print(
-            "[OK] Selected serving model: "
-            f"{registered_model_name} v{serving_selection['registered_model_version']} "
+            "[OK] Selected serving candidate: "
+            f"{best_result['model_name']} for {registered_model_name} "
             f"({serving_model_stage})"
         )
         print(f"[OK] Evaluation summary written to: {summary_path}")

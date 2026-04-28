@@ -1,5 +1,5 @@
 from src.evaluate import choose_best_serving_candidate
-from src.train import maybe_register_best_model
+from src.train import choose_best_model, maybe_register_best_model
 
 
 class DummyMlflow:
@@ -83,3 +83,41 @@ def test_choose_best_serving_candidate_raises_when_none_pass() -> None:
         assert "No evaluated model passed the serving thresholds" in str(exc)
     else:
         raise AssertionError("Expected choose_best_serving_candidate to raise")
+
+
+def test_choose_best_serving_candidate_supports_prefixed_primary_metric() -> None:
+    best = choose_best_serving_candidate(
+        [
+            {
+                "model_name": "random_forest",
+                "test_metrics": {"f1": 0.81},
+                "thresholds": {"passed": True},
+            },
+            {
+                "model_name": "logistic_regression",
+                "test_metrics": {"f1": 0.84},
+                "thresholds": {"passed": True},
+            },
+        ],
+        primary_metric="val_f1",
+    )
+
+    assert best["model_name"] == "logistic_regression"
+
+
+def test_choose_best_model_supports_prefixed_primary_metric() -> None:
+    best = choose_best_model(
+        [
+            {
+                "model_name": "random_forest",
+                "val_metrics": {"f1": 0.81},
+            },
+            {
+                "model_name": "logistic_regression",
+                "val_metrics": {"f1": 0.84},
+            },
+        ],
+        primary_metric="val_f1",
+    )
+
+    assert best["model_name"] == "logistic_regression"

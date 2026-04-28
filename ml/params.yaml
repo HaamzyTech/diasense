@@ -49,6 +49,7 @@ files:
   drift_baseline: drift_baseline.json
   # evaluation
   evaluation_summary: evaluation_summary.json
+  registration_summary: registration_summary.json
   test_metrics: test_metrics.json
   test_classification_report: test_classification_report.json
   threshold_results: threshold_results.json
