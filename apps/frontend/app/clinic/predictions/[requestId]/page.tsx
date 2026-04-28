@@ -54,7 +54,7 @@ export default async function PredictionDetailPage({
           Prediction detail
         </p>
         <h1 className="font-headline text-3xl font-bold tracking-tight text-on-surface">
-          Assessment {prediction.request.id}
+          Assessment for {prediction.request.patient_email}
         </h1>
         <p className="max-w-3xl text-sm leading-6 text-on-surface-variant">
           Review the submitted assessment metrics, ownership information, and
